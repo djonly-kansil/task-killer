@@ -40,8 +40,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun checkShizukuStatus() {
-        _shizukuAvailable.value = ShizukuManager.isShizukuAvailable()
-        _shizukuPermissionGranted.value = ShizukuManager.isPermissionGranted()
+        val available = ShizukuManager.isShizukuAvailable()
+        val granted = ShizukuManager.isPermissionGranted()
+        _shizukuAvailable.value = available
+        _shizukuPermissionGranted.value = granted
+        if (granted) {
+            loadUserApps()
+        }
     }
 
     fun requestShizukuPermission() {
@@ -51,34 +56,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun loadUserApps() {
         viewModelScope.launch {
             val apps = withContext(Dispatchers.IO) {
+                if (!ShizukuManager.isPermissionGranted()) return@withContext emptyList<AppInfo>()
+
+                // 1. Get third-party packages
+                val pmOutput = ShizukuManager.executeCommand("pm list packages -3")
+                val thirdPartyPackages = pmOutput.lines()
+                    .filter { it.startsWith("package:") }
+                    .map { it.removePrefix("package:").trim() }
+                    .toSet()
+
+                // 2. Get running processes
+                val psOutput = ShizukuManager.executeCommand("ps -A -o NAME")
+                val runningProcessNames = psOutput.lines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && it != "NAME" }
+                    .toSet()
+
+                // 3. Filter running apps that are in third-party packages
+                val runningThirdPartyApps = runningProcessNames
+                    .filter { processName ->
+                        // The process name might be package.name:process, so we take substring before ':'
+                        val packageName = processName.substringBefore(":")
+                        thirdPartyPackages.contains(packageName)
+                    }.map { it.substringBefore(":") }.toSet()
+
                 val pm = getApplication<Application>().packageManager
-                val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                
                 val myPackageName = getApplication<Application>().packageName
                 val launcherPackages = getLauncherPackages(pm)
-
+                
                 val vendorPrefixes = listOf(
-                    "com.android.", "android.process.", "com.coloros.", 
+                    "com.android.", "android.process.", "com.coloros.", "com.google.android.", 
                     "com.oplus.", "com.miui.", "com.samsung.", "moe.shizuku.privileged.api"
                 )
 
-                packages.mapNotNull { appInfo ->
-                    val packageName = appInfo.packageName
-                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0 || 
-                                   (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
-                    
+                runningThirdPartyApps.mapNotNull { packageName ->
                     val isVendorOrSystem = vendorPrefixes.any { packageName.startsWith(it) }
                     val isLauncher = launcherPackages.contains(packageName)
                     val isSelf = packageName == myPackageName
 
-                    if (isSystem || isVendorOrSystem || isLauncher || isSelf) {
+                    if (isVendorOrSystem || isLauncher || isSelf) {
                         null
                     } else {
-                        AppInfo(
-                            packageName = packageName,
-                            name = pm.getApplicationLabel(appInfo).toString(),
-                            icon = pm.getApplicationIcon(appInfo)
-                        )
+                        try {
+                            val appInfo = pm.getApplicationInfo(packageName, 0)
+                            AppInfo(
+                                packageName = packageName,
+                                name = pm.getApplicationLabel(appInfo).toString(),
+                                icon = pm.getApplicationIcon(appInfo)
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
                 }.sortedBy { it.name.lowercase() }
             }
@@ -108,7 +136,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             selectedApps.forEach { app ->
                 ShizukuManager.forceStopPackage(app.packageName)
             }
-            _userApps.update { apps -> apps.map { it.copy(isSelected = false) } }
+            loadUserApps() // Reload running apps list
         }
     }
 
@@ -118,7 +146,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             allApps.forEach { app ->
                 ShizukuManager.forceStopPackage(app.packageName)
             }
-            _userApps.update { apps -> apps.map { it.copy(isSelected = false) } }
+            loadUserApps() // Reload running apps list
         }
     }
 }

@@ -48,4 +48,36 @@ object ShizukuManager {
             false
         }
     }
+
+    fun executeCommand(command: String): String {
+        if (!isPermissionGranted()) return ""
+        return try {
+            val newProcessMethod = Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
+            )
+            newProcessMethod.isAccessible = true
+            
+            val process = newProcessMethod.invoke(
+                null, 
+                arrayOf("sh", "-c", command), 
+                null, 
+                null
+            ) as Process
+            
+            val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+            val output = StringBuilder()
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                output.append(line).append("\n")
+            }
+            process.waitFor()
+            output.toString()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
+        }
+    }
 }

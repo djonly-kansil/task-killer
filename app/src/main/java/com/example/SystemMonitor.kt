@@ -38,12 +38,20 @@ class SystemMonitor(private val context: Context) {
 
     private fun readCpuStats(): CpuStats? {
         return try {
-            val reader = RandomAccessFile("/proc/stat", "r")
-            val line = reader.readLine()
-            reader.close()
+            // First try reading directly (works on older Android)
+            var line: String? = null
+            try {
+                val reader = RandomAccessFile("/proc/stat", "r")
+                line = reader.readLine()
+                reader.close()
+            } catch (e: Exception) {
+                // Fallback to Shizuku if permission denied
+                val output = ShizukuManager.executeCommand("cat /proc/stat | grep '^cpu '")
+                line = output.split("\n").firstOrNull { it.startsWith("cpu ") }
+            }
             
             if (line?.startsWith("cpu ") == true) {
-                val parts = line.split("\\s+".toRegex()).drop(1).mapNotNull { it.toLongOrNull() }
+                val parts = line.trim().split("\\s+".toRegex()).drop(1).mapNotNull { it.toLongOrNull() }
                 if (parts.size >= 4) {
                     val idle = parts[3]
                     val total = parts.sum()
