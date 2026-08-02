@@ -58,16 +58,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val apps = withContext(Dispatchers.IO) {
                 if (!ShizukuManager.isPermissionGranted()) return@withContext emptyList<AppInfo>()
 
-                // 1. Get third-party packages using standard PackageManager
-                val pm = getApplication<Application>().packageManager
-                val installedPackages = pm.getInstalledApplications(0)
-                val thirdPartyPackages = installedPackages
-                    .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 && 
-                              (it.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
-                    .map { it.packageName }
+                // 1. Get third-party packages
+                val pmOutput = ShizukuManager.executeCommand("pm list packages -3")
+                val thirdPartyPackages = pmOutput.lines()
+                    .filter { it.startsWith("package:") }
+                    .map { it.removePrefix("package:").trim() }
                     .toSet()
 
-                // 2. Get running processes via Shizuku
+                // 2. Get running processes
                 val psOutput = ShizukuManager.executeCommand("ps -A")
                 val runningProcessNames = psOutput.lines()
                     .drop(1) // Drop header
@@ -80,10 +78,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 // 3. Filter running apps that are in third-party packages
                 val runningThirdPartyApps = runningProcessNames
-                    .map { it.substringBefore(":") } // Handle format like com.example.app:service
-                    .filter { thirdPartyPackages.contains(it) }
-                    .toSet()
+                    .filter { processName ->
+                        // The process name might be package.name:process, so we take substring before ':'
+                        val packageName = processName.substringBefore(":")
+                        thirdPartyPackages.contains(packageName)
+                    }.map { it.substringBefore(":") }.toSet()
 
+                val pm = getApplication<Application>().packageManager
                 val myPackageName = getApplication<Application>().packageName
                 val launcherPackages = getLauncherPackages(pm)
                 
