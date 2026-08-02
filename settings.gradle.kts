@@ -25,5 +25,3 @@ dependencyResolutionManagement {
 rootProject.name = "TaskKiller"
 
 include(":app")
-
- 
