@@ -1,6 +1,6 @@
 {
-  "name": "Task Killer",
-  "description": "Lightweight Task Killer & System Monitor using Shizuku",
+  "name": "TaskWatch",
+  "description": "A system-utility app to view and manage background processes.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

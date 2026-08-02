@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "TaskKiller"
+rootProject.name = "TaskWatch"
 
 include(":app")
