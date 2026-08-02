@@ -28,11 +28,28 @@ class SystemMonitor(private val context: Context) {
             val usedRamMb = totalRamMb - availRamMb
 
             val currentCpuStats = readCpuStats()
-            val cpuUsage = calculateCpuUsage(lastCpuStats, currentCpuStats)
-            lastCpuStats = currentCpuStats
+            
+            val cpuUsage = if (currentCpuStats != null) {
+                val usage = calculateCpuUsage(lastCpuStats, currentCpuStats)
+                lastCpuStats = currentCpuStats
+                usage
+            } else {
+                readCpuUsageFromDumpsys()
+            }
 
             emit(SystemStats(totalRamMb, usedRamMb, cpuUsage))
             delay(2500) // Update every 2.5 seconds
+        }
+    }
+
+    private fun readCpuUsageFromDumpsys(): Float {
+        return try {
+            val output = ShizukuManager.executeCommand("dumpsys cpuinfo")
+            val totalLine = output.lines().find { it.contains("TOTAL:") } ?: return 0f
+            val match = Regex("([0-9.]+)\\s*%\\s*TOTAL").find(totalLine)
+            match?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+        } catch (e: Exception) {
+            0f
         }
     }
 

@@ -2,6 +2,7 @@ package com.example
 
 import android.app.Application
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -55,21 +56,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun loadUserApps() {
         viewModelScope.launch {
             val apps = withContext(Dispatchers.IO) {
-                val context = getApplication<Application>()
-                val pm = context.packageManager
-                val myPackageName = context.packageName
+                if (!ShizukuManager.isPermissionGranted()) return@withContext emptyList<AppInfo>()
+
+                // 1. Get third-party packages
+                val pmOutput = ShizukuManager.executeCommand("pm list packages -3")
+                val thirdPartyPackages = pmOutput.lines()
+                    .filter { it.startsWith("package:") }
+                    .map { it.removePrefix("package:").trim() }
+                    .toSet()
+
+                // 2. Get running processes
+                val psOutput = ShizukuManager.executeCommand("ps -A")
+                val runningProcessNames = psOutput.lines()
+                    .drop(1) // Drop header
+                    .mapNotNull { line ->
+                        val parts = line.trim().split("\\s+".toRegex())
+                        if (parts.isNotEmpty()) parts.last() else null
+                    }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+
+                // 3. Filter running apps that are in third-party packages
+                val runningThirdPartyApps = runningProcessNames
+                    .filter { processName ->
+                        // The process name might be package.name:process, so we take substring before ':'
+                        val packageName = processName.substringBefore(":")
+                        thirdPartyPackages.contains(packageName)
+                    }.map { it.substringBefore(":") }.toSet()
+
+                val pm = getApplication<Application>().packageManager
+                val myPackageName = getApplication<Application>().packageName
                 val launcherPackages = getLauncherPackages(pm)
-
-                // Gunakan ShizukuManager.getRunningApps(context) yang sudah punya fallback & parsing aman
-                val runningAppsFromManager = ShizukuManager.getRunningApps(context)
-
+                
                 val vendorPrefixes = listOf(
                     "com.android.", "android.process.", "com.coloros.", "com.google.android.", 
                     "com.oplus.", "com.miui.", "com.samsung.", "moe.shizuku.privileged.api"
                 )
 
-                runningAppsFromManager.mapNotNull { app ->
-                    val packageName = app.packageName
+                runningThirdPartyApps.mapNotNull { packageName ->
                     val isVendorOrSystem = vendorPrefixes.any { packageName.startsWith(it) }
                     val isLauncher = launcherPackages.contains(packageName)
                     val isSelf = packageName == myPackageName
@@ -85,12 +109,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 icon = pm.getApplicationIcon(appInfo)
                             )
                         } catch (e: Exception) {
-                            // Fallback jika icon gagal diambil
-                            AppInfo(
-                                packageName = packageName,
-                                name = app.appName,
-                                icon = pm.defaultActivityIcon
-                            )
+                            null
                         }
                     }
                 }.sortedBy { it.name.lowercase() }
@@ -126,7 +145,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun killAllApps() {
-        viewModelScope.launch(Dispatchers.IO) {
+         viewModelScope.launch(Dispatchers.IO) {
             val allApps = _userApps.value
             allApps.forEach { app ->
                 ShizukuManager.forceStopPackage(app.packageName)
