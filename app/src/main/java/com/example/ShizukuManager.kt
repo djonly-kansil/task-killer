@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 object ShizukuManager {
 
@@ -25,7 +27,7 @@ object ShizukuManager {
         }
     }
 
-    // --- FUNGSI MENGAMBIL DAFTAR APLIKASI (PERBAIKAN UTAMA) ---
+    // --- FUNGSI MENGAMBIL DAFTAR APLIKASI (SUDAH DIPERBAIKI) ---
     fun getRunningApps(context: Context): List<AppInfo> {
         val packageManager = context.packageManager
         val runningApps = mutableListOf<AppInfo>()
@@ -34,7 +36,7 @@ object ShizukuManager {
             // Ambil semua aplikasi yang diinstall oleh pengguna
             val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
 
-            // Ambil list package aktif dari shell perintah 'ps -A'
+            // Ambil list package aktif dari shell 'ps -A'
             val shellOutput = executeCommand("ps -A")
             val runningPackages = mutableSetOf<String>()
 
@@ -42,9 +44,10 @@ object ShizukuManager {
                 shellOutput.lines().forEach { line ->
                     val parts = line.trim().split("\\s+".toRegex())
                     if (parts.isNotEmpty()) {
-                        val pkg = parts.last()
-                        if (pkg.contains(".")) {
-                            runningPackages.add(pkg)
+                        val processName = parts.last()
+                        val packageName = processName.substringBefore(":") // Menghilangkan sub-process (:remote, dll)
+                        if (packageName.contains(".")) {
+                            runningPackages.add(packageName)
                         }
                     }
                 }
@@ -58,10 +61,21 @@ object ShizukuManager {
 
                 if (isUserApp && !isSelf && !isShizuku) {
                     val appName = packageManager.getApplicationLabel(app).toString()
+                    val appIcon = try {
+                        packageManager.getApplicationIcon(app)
+                    } catch (e: Exception) {
+                        packageManager.defaultActivityIcon
+                    }
 
-                    // Fallback: Jika 'ps -A' diblokir, tampilkan semua User Apps
+                    // Fallback: Jika 'ps -A' diblokir/kosong, tampilkan seluruh User Apps
                     if (runningPackages.isEmpty() || runningPackages.contains(app.packageName)) {
-                        runningApps.add(AppInfo(appName, app.packageName))
+                        runningApps.add(
+                            AppInfo(
+                                name = appName,
+                                packageName = app.packageName,
+                                icon = appIcon
+                            )
+                        )
                     }
                 }
             }
@@ -81,22 +95,14 @@ object ShizukuManager {
     fun executeCommand(command: String): String {
         if (!isPermissionGranted()) return ""
         return try {
-            val newProcessMethod = Shizuku::class.java.getDeclaredMethod(
-                "newProcess",
-                Array<String>::class.java,
-                Array<String>::class.java,
-                String::class.java
-            )
-            newProcessMethod.isAccessible = true
-            
-            val process = newProcessMethod.invoke(
-                null, 
-                arrayOf("sh", "-c", command), 
-                null, 
+            // Menggunakan API resmi Shizuku.newProcess tanpa Reflection manual
+            val process = Shizuku.newProcess(
+                arrayOf("sh", "-c", command),
+                null,
                 null
-            ) as Process
+            )
             
-            val reader = java.io.BufferedReader(java.io.InputStreamReader(process.inputStream))
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
             val output = StringBuilder()
             var line: String?
             while (reader.readLine().also { line = it } != null) {
