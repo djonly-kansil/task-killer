@@ -1,0 +1,6 @@
+{
+  "name": "Shizuku Task Manager",
+  "description": "Task & Package Manager berbasis Shizuku dengan Whitelist Dinamis, Running Apps Filter, dan Eksekusi Command Shell.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
