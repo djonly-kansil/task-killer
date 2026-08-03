@@ -1,6 +1,6 @@
 {
-  "name": "Shizuku Task Manager",
-  "description": "Task & Package Manager berbasis Shizuku dengan Whitelist Dinamis, Running Apps Filter, dan Eksekusi Command Shell.",
+  "name": "TaskWatch",
+  "description": "A system-utility app to view and manage background processes.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

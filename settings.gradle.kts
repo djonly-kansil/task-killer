@@ -19,10 +19,9 @@ dependencyResolutionManagement {
   repositories {
     google()
     mavenCentral()
-    maven { url = uri("https://devrepo.rikka.app/repository/maven-public/") }
   }
 }
 
-rootProject.name = "Shizuku Task Manager"
+rootProject.name = "TaskWatch"
 
 include(":app")
