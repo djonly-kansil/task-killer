@@ -34,15 +34,17 @@ jobs:
             echo "No keystore provided, will not build release APK properly"
           fi
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
 
       - name: Build with Gradle
         env:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
-        run: ./gradlew assembleDebug assembleRelease
+        run: gradle assembleDebug assembleRelease
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4

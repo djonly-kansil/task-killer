@@ -89,16 +89,21 @@ class AppManagerViewModel : ViewModel() {
     }
 
     fun checkShizukuStatus() {
-        val status = if (Shizuku.pingBinder()) {
-            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                "Shizuku Connected & Granted"
+        try {
+            val status = if (Shizuku.pingBinder()) {
+                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                    "Shizuku Connected & Granted"
+                } else {
+                    "Shizuku Running (Permission Denied)"
+                }
             } else {
-                "Shizuku Running (Permission Denied)"
+                "Shizuku Not Running"
             }
-        } else {
-            "Shizuku Not Running"
+            _state.value = _state.value.copy(shizukuStatus = status)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            _state.value = _state.value.copy(shizukuStatus = "Shizuku Error")
         }
-        _state.value = _state.value.copy(shizukuStatus = status)
     }
 
     fun forceStopApp(packageName: String, context: Context) {

@@ -45,12 +45,16 @@ class MainActivity : ComponentActivity() {
     private val viewModel: AppManagerViewModel by viewModels()
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        checkShizukuPermission()
-        viewModel.checkShizukuStatus()
+        runOnUiThread {
+            checkShizukuPermission()
+            viewModel.checkShizukuStatus()
+        }
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        viewModel.checkShizukuStatus()
+        runOnUiThread {
+            viewModel.checkShizukuStatus()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
