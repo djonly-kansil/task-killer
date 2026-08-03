@@ -1,6 +1,6 @@
 {
-  "name": "TaskWatch",
-  "description": "A system-utility app to view and manage background processes.",
+  "name": "App Manager",
+  "description": "An application manager utilizing Shizuku.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

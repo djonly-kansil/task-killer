@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "TaskWatch"
+rootProject.name = "App Manager"
 
 include(":app")
