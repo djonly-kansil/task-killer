@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -28,6 +29,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -52,9 +54,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        runOnUiThread {
-            viewModel.checkShizukuStatus()
-        }
+        runOnUiThread { viewModel.checkShizukuStatus() }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,7 +102,6 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
-    // Auto-update RAM every 2 seconds
     LaunchedEffect(Unit) {
         while (true) {
             viewModel.updateRamInfo(context)
@@ -126,7 +125,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Top Header
+            // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -136,30 +135,13 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
             ) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "AppController ",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "Pro",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Text("AppController ", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                        Text("Pro", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                         val isConnected = state.shizukuStatus.contains("Granted")
                         val statusColor = if (isConnected) GeometricSuccess else MaterialTheme.colorScheme.error
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(statusColor, CircleShape)
-                        )
+                        Box(modifier = Modifier.size(8.dp).background(statusColor, CircleShape))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isConnected) "SHIZUKU CONNECTED" else "SHIZUKU DISCONNECTED",
@@ -171,7 +153,6 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     }
                 }
 
-                // Tombol Gear (Buka Settings App)
                 IconButton(
                     onClick = {
                         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -179,67 +160,29 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                         }
                         context.startActivity(intent)
                     },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                    modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
                 }
             }
 
             // Memory Usage Card
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column {
-                            Text(
-                                text = "MEMORY USAGE",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                letterSpacing = 1.sp
-                            )
-                            Row(
-                                verticalAlignment = Alignment.Bottom,
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = String.format("%.1f GB", state.usedRamGb),
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
+                            Text("MEMORY USAGE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                            Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
+                                Text(String.format("%.1f GB", state.usedRamGb), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = String.format("/ %.1f GB", state.totalRamGb),
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 3.dp)
-                                )
+                                Text(String.format("/ %.1f GB", state.totalRamGb), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
                             }
                         }
-                        
                         val ratio = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
                         Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(
@@ -250,24 +193,14 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                                 strokeWidth = 4.dp,
                                 strokeCap = StrokeCap.Round
                             )
-                            Text(
-                                text = "${(ratio * 100).toInt()}%",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
+                            Text("${(ratio * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                         }
                     }
-
                     Spacer(modifier = Modifier.height(12.dp))
-                    
                     val progressValue = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
                     LinearProgressIndicator(
                         progress = { progressValue },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                         color = MaterialTheme.colorScheme.primary,
                         trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                         strokeCap = StrokeCap.Round
@@ -275,34 +208,38 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // Section Title
-            val titleText = when (state.currentTab) {
-                0 -> "User Apps"
-                1 -> "System Apps"
-                else -> "About"
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            // Section Header dengan Tombol KILL ALL jika di Tab User Apps
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = titleText,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .width(32.dp)
-                        .height(3.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                )
+                val titleText = when (state.currentTab) {
+                    0 -> "User Apps"
+                    1 -> "System Apps"
+                    else -> "About"
+                }
+
+                Column {
+                    Text(titleText, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Box(modifier = Modifier.padding(top = 4.dp).width(32.dp).height(3.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
+                }
+
+                // Tombol KILL ALL Hanya Muncul di Tab User Apps (Tab 0)
+                if (state.currentTab == 0) {
+                    Button(
+                        onClick = { viewModel.killAllUserApps(context) },
+                        colors = ButtonDefaults.buttonColors(containerColor = GeometricError, contentColor = GeometricOnError),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text("KILL ALL", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
-            // Area Konten Utama
+            // Area Konten
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -333,6 +270,8 @@ fun AppListContent(
             AppItemCard(
                 app = app,
                 onForceStop = { viewModel.forceStopApp(app.packageName, context) },
+                onToggleData = { viewModel.toggleDataNetwork(app.packageName, app.uid, app.isDataOn) },
+                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:${app.packageName}")
@@ -349,6 +288,8 @@ fun AppListContent(
 fun AppItemCard(
     app: AppInfo,
     onForceStop: () -> Unit,
+    onToggleData: () -> Unit,
+    onToggleAutoBoot: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
@@ -359,81 +300,102 @@ fun AppItemCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon App
             Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
+                modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (app.icon != null) {
-                    AsyncImage(
-                        model = app.icon,
-                        contentDescription = app.appName,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                    )
+                    AsyncImage(model = app.icon, contentDescription = app.appName, modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)))
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                    )
+                    Box(modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)))
                 }
             }
             
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             
+            // Nama & Package App
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = app.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(app.appName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             
-            Spacer(modifier = Modifier.width(8.dp))
-            
+            // Ikon Power DATA ON/OFF (Tombol Bulat Merah/Hijau)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            ) {
+                Text(
+                    text = if (app.isDataOn) "DATA ON" else "DATA OFF",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (app.isDataOn) Color.White else Color.Gray
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                IconButton(
+                    onClick = onToggleData,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(if (app.isDataOn) GeometricSuccess else GeometricError, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = "Data Toggle",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Kolom Action (Auto Boot, Kill, Info, Del)
             Column(
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Button(
-                    onClick = onForceStop,
-                    modifier = Modifier.height(26.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GeometricError,
-                        contentColor = GeometricOnError
-                    ),
-                    shape = CircleShape
-                ) {
-                    Text("KILL", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Tombol AUTO BOOT (Hijau jika ON, Abu-Abu jika OFF)
+                    Button(
+                        onClick = onToggleAutoBoot,
+                        modifier = Modifier.height(26.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (app.isAutoBootEnabled) GeometricSuccess else Color.Gray,
+                            contentColor = Color.White
+                        ),
+                        shape = CircleShape
+                    ) {
+                        Text("AUTO BOOT", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Tombol KILL (Merah jika Running, Abu-abu jika Off)
+                    Button(
+                        onClick = onForceStop,
+                        enabled = app.isRunning, // Hanya bisa diklik jika aktif
+                        modifier = Modifier.height(26.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GeometricError,
+                            contentColor = GeometricOnError,
+                            disabledContainerColor = Color.Gray.copy(alpha = 0.5f),
+                            disabledContentColor = Color.LightGray
+                        ),
+                        shape = CircleShape
+                    ) {
+                        Text("KILL", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-                
+
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedButton(
                         onClick = onInfo,
                         modifier = Modifier.height(24.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onBackground
-                        ),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         shape = CircleShape
                     ) {
@@ -445,9 +407,7 @@ fun AppItemCard(
                             onClick = onUninstall,
                             modifier = Modifier.height(24.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = GeometricError
-                            ),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GeometricError),
                             border = BorderStroke(1.dp, GeometricError.copy(alpha = 0.6f)),
                             shape = CircleShape
                         ) {
@@ -463,31 +423,15 @@ fun AppItemCard(
 @Composable
 fun AboutScreenContent(shizukuStatus: String) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "AppController Pro",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        Text("AppController Pro", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Version 1.0.0",
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text("Version 1.0.0", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Status Service: $shizukuStatus",
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center
-        )
+        Text("Status Service: $shizukuStatus", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
     }
 }
 
@@ -497,38 +441,19 @@ fun CustomBottomNavigationBar(
     onSelect: (Int) -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp, horizontal = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 12.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomNavItem(
-                icon = Icons.Default.Apps,
-                label = "Apps",
-                isSelected = selectedIndex == 0,
-                onClick = { onSelect(0) }
-            )
-            BottomNavItem(
-                icon = Icons.Default.Security,
-                label = "System",
-                isSelected = selectedIndex == 1,
-                onClick = { onSelect(1) }
-            )
-            BottomNavItem(
-                icon = Icons.Default.Info,
-                label = "About",
-                isSelected = selectedIndex == 2,
-                onClick = { onSelect(2) }
-            )
+            BottomNavItem(icon = Icons.Default.Apps, label = "Apps", isSelected = selectedIndex == 0, onClick = { onSelect(0) })
+            BottomNavItem(icon = Icons.Default.Security, label = "System", isSelected = selectedIndex == 1, onClick = { onSelect(1) })
+            BottomNavItem(icon = Icons.Default.Info, label = "About", isSelected = selectedIndex == 2, onClick = { onSelect(2) })
         }
     }
 }
@@ -541,35 +466,19 @@ fun BottomNavItem(
     onClick: () -> Unit
 ) {
     val backgroundModifier = if (isSelected) {
-        Modifier
-            .background(MaterialTheme.colorScheme.primary, CircleShape)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp)
     } else {
-        Modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     }
 
     Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .then(backgroundModifier)
-            .clickable { onClick() },
+        modifier = Modifier.clip(CircleShape).then(backgroundModifier).clickable { onClick() },
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp)
-        )
+        Icon(imageVector = icon, contentDescription = label, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         if (isSelected) {
             Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary
-            )
+            Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
         }
     }
 }
