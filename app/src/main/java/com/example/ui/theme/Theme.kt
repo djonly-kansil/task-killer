@@ -8,26 +8,24 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme =
-  darkColorScheme(primary = Teal80, secondary = TealGrey80, tertiary = Mint80)
+  darkColorScheme(primary = Indigo100, secondary = Slate400, tertiary = Indigo50, background = Slate900, surface = Slate900)
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = Teal40,
-    secondary = TealGrey40,
-    tertiary = Mint40,
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+    primary = Indigo600,
+    secondary = Slate600,
+    tertiary = Indigo500,
+    background = BackgroundColor,
+    surface = CardBackground,
     onPrimary = Color.White,
     onSecondary = Color.White,
     onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    onBackground = Slate900,
+    onSurface = Slate900,
   )
 
 @Composable

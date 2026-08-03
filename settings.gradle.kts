@@ -19,6 +19,7 @@ dependencyResolutionManagement {
   repositories {
     google()
     mavenCentral()
+    maven { url = uri("https://devrepo.rikka.app/repository/maven-public/") }
   }
 }
 

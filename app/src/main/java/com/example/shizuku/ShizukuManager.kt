@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import android.util.Log
 import com.example.BuildConfig
-import dev.rikka.shizuku.Shizuku
+import rikka.shizuku.Shizuku
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

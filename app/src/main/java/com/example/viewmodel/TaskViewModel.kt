@@ -63,7 +63,9 @@ data class TaskUiState(
 }
 
 class TaskViewModel : ViewModel() {
-    private const val TAG = "TaskViewModel"
+    companion object {
+        private const val TAG = "TaskViewModel"
+    }
 
     private val _uiState = MutableStateFlow(TaskUiState())
     val uiState: StateFlow<TaskUiState> = _uiState.asStateFlow()
