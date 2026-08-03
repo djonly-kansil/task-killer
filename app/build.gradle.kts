@@ -34,7 +34,8 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
@@ -80,10 +81,10 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
   // implementation(libs.androidx.navigation.compose)
-  implementation(libs.androidx.room.ktx)
-  implementation(libs.androidx.room.runtime)
+  // implementation(libs.androidx.room.ktx) // Not used in source code
+  // implementation(libs.androidx.room.runtime) // Not used in source code
   // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
+  // implementation(libs.converter.moshi) // Not used in source code
   // implementation(libs.firebase.ai) // Not needed: Firebase unused
   // Uncomment to use Firestore:
   // implementation(libs.firebase.firestore)
@@ -97,13 +98,13 @@ dependencies {
   // implementation(libs.firebase.appcheck.recaptcha) // Not needed: Firebase unused
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
-  implementation(libs.okhttp)
+  // implementation(libs.logging.interceptor) // Not used in source code
+  // implementation(libs.moshi.kotlin) // Not used in source code
+  // implementation(libs.okhttp) // Not used in source code
   implementation(libs.shizuku.api)
   implementation(libs.shizuku.provider)
   // implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  // implementation(libs.retrofit) // Not used in source code
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -120,6 +121,6 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  // "ksp"(libs.androidx.room.compiler) // Not used: Room removed
+  // "ksp"(libs.moshi.kotlin.codegen) // Not used: Moshi removed
 }
