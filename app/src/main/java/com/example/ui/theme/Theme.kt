@@ -1,17 +1,13 @@
 package com.example.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
 private val GeometricColorScheme = darkColorScheme(
     primary = GeometricPrimary,
+    onPrimary = Color.White,
     background = GeometricBackground,
     surface = GeometricSurface,
     surfaceVariant = GeometricSurfaceVariant,
@@ -26,9 +22,8 @@ private val GeometricColorScheme = darkColorScheme(
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = true, // Force dark theme for Geometric Balance
-  // Dynamic color is available on Android 12+
-  dynamicColor: Boolean = false, // Disable dynamic colors to enforce theme
+  darkTheme: Boolean = true,
+  dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
   val colorScheme = GeometricColorScheme

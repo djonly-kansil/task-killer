@@ -9,34 +9,32 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.border
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import rikka.shizuku.Shizuku
@@ -97,13 +95,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("User Apps", "System Apps")
+    var selectedBottomNav by remember { mutableIntStateOf(0) } // 0: Apps, 1: System, 2: About
 
     // Auto-update RAM every 2 seconds
     LaunchedEffect(Unit) {
@@ -115,7 +111,13 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            CustomBottomNavigationBar(
+                selectedIndex = selectedBottomNav,
+                onSelect = { selectedBottomNav = it }
+            )
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -127,18 +129,25 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 16.dp),
+                    .padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = "AppController Pro",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = (-0.5).sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "AppController ",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Pro",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 4.dp)
@@ -162,9 +171,9 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
+                        .size(44.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -180,117 +189,135 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                    .padding(horizontal = 24.dp, vertical = 6.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(24.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(16.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "MEMORY USAGE",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            letterSpacing = 1.sp
-                        )
-                        Row(
-                            verticalAlignment = Alignment.Bottom,
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Text(
-                                text = String.format("%.1f GB", state.usedRamGb),
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Light,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = String.format("/ %.1f GB", state.totalRamGb),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                        }
-                    }
-                    
-                    Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            progress = { if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f },
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.outline,
-                            strokeWidth = 3.dp,
-                            strokeCap = StrokeCap.Round
-                        )
-                        Text(
-                            text = "${if (state.totalRamGb > 0) ((state.usedRamGb / state.totalRamGb) * 100).toInt() else 0}%",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                }
-            }
-
-            // Tabs
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-                    // We don't have a simple border modifier for one side, so let's just use a divider below instead of border bottom.
-            ) {
-                tabs.forEachIndexed { index, title ->
-                    val isSelected = selectedTabIndex == index
-                    TextButton(
-                        onClick = { selectedTabIndex = index },
-                        contentPadding = PaddingValues(bottom = 12.dp, start = 8.dp, end = 8.dp),
-                        modifier = Modifier.padding(end = 16.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
                             Text(
-                                text = title,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                                text = "MEMORY USAGE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = 1.sp
                             )
-                            if (isSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 8.dp)
-                                        .height(2.dp)
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.primary)
+                            Row(
+                                verticalAlignment = Alignment.Bottom,
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text(
+                                    text = String.format("%.1f GB", state.usedRamGb),
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = String.format("/ %.1f GB", state.totalRamGb),
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 3.dp)
                                 )
                             }
                         }
+                        
+                        val ratio = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
+                        Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                progress = { ratio },
+                                modifier = Modifier.fillMaxSize(),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                strokeWidth = 4.dp,
+                                strokeCap = StrokeCap.Round
+                            )
+                            Text(
+                                text = "${(ratio * 100).toInt()}%",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    val progressValue = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
+                    LinearProgressIndicator(
+                        progress = { progressValue },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                        strokeCap = StrokeCap.Round
+                    )
                 }
             }
 
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 24.dp),
-                thickness = 1.dp,
-                color = MaterialTheme.colorScheme.outline
-            )
+            // Section Title (Tanpa Dead Space)
+            val titleText = when (selectedBottomNav) {
+                0 -> "User Apps"
+                1 -> "System Apps"
+                else -> "About"
+            }
 
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = titleText,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .width(32.dp)
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                )
+            }
+
+            // Content List / View
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
+            } else if (selectedBottomNav == 2) {
+                // About View
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "AppController Pro v1.0\nPowered by Shizuku",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 14.sp
+                    )
+                }
             } else {
-                val currentList = if (selectedTabIndex == 0) state.userApps else state.systemApps
+                val currentList = if (selectedBottomNav == 0) state.userApps else state.systemApps
                 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 24.dp, top = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp, top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(currentList, key = { it.packageName }) { app ->
                         AppItemCard(
@@ -321,36 +348,46 @@ fun AppItemCard(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon Box
+            // Icon App
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
-                )
+                if (app.icon != null) {
+                    AsyncImage(
+                        model = app.icon,
+                        contentDescription = app.appName,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
+                    )
+                }
             }
             
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = app.appName,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -364,13 +401,16 @@ fun AppItemCard(
                 )
             }
             
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Button(
                     onClick = onForceStop,
-                    modifier = Modifier.height(24.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    modifier = Modifier.height(26.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = GeometricError,
                         contentColor = GeometricOnError
@@ -388,10 +428,10 @@ fun AppItemCard(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onBackground
                         ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         shape = CircleShape
                     ) {
-                        Text("INFO", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("INFO", fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
 
                     if (!app.isSystemApp) {
@@ -402,10 +442,71 @@ fun AppItemCard(
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = GeometricError
                             ),
-                            border = BorderStroke(1.dp, GeometricError),
+                            border = BorderStroke(1.dp, GeometricError.copy(alpha = 0.6f)),
                             shape = CircleShape
                         ) {
-                            Text("DEL", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("DEL", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CustomBottomNavigationBar(
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(32.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val navItems = listOf(
+                Triple("Apps", Icons.Default.Apps, 0),
+                Triple("System", Icons.Default.Security, 1),
+                Triple("About", Icons.Default.Info, 2)
+            )
+
+            navItems.forEach { (label, icon, index) ->
+                val isSelected = selectedIndex == index
+                
+                Surface(
+                    onClick = { onSelect(index) },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.height(40.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        if (isSelected) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }

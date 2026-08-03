@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +18,8 @@ import rikka.shizuku.Shizuku
 data class AppInfo(
     val appName: String,
     val packageName: String,
-    val isSystemApp: Boolean
+    val isSystemApp: Boolean,
+    val icon: Drawable? = null
 )
 
 data class AppManagerState(
@@ -52,7 +54,12 @@ class AppManagerViewModel : ViewModel() {
                     if (appInfo != null) {
                         val name = pm.getApplicationLabel(appInfo).toString()
                         val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                        val info = AppInfo(name, pkg.packageName, isSystem)
+                        val icon = try {
+                            pm.getApplicationIcon(appInfo)
+                        } catch (e: Exception) {
+                            null
+                        }
+                        val info = AppInfo(name, pkg.packageName, isSystem, icon)
                         if (isSystem) {
                             systemApps.add(info)
                         } else {

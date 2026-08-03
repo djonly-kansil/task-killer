@@ -83,7 +83,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   // implementation(libs.androidx.room.ktx) // Not used in source code
   // implementation(libs.androidx.room.runtime) // Not used in source code
-  // implementation(libs.coil.compose)
+  implementation(libs.coil.compose)
   // implementation(libs.converter.moshi) // Not used in source code
   // implementation(libs.firebase.ai) // Not needed: Firebase unused
   // Uncomment to use Firestore:
