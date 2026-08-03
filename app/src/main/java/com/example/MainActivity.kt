@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,7 +19,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        ShizukuManager.initialize(this)
+        // Inisialisasi Shizuku dengan pengaman try-catch
+        try {
+            ShizukuManager.initialize(this)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Gagal inisialisasi ShizukuManager: ${e.message}")
+        }
 
         enableEdgeToEdge()
         setContent {
@@ -28,7 +34,6 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val viewModel: TaskViewModel = viewModel()
-                    // Initialize viewmodel exactly once
                     androidx.compose.runtime.LaunchedEffect(Unit) {
                         viewModel.initialize(applicationContext)
                     }
@@ -40,11 +45,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        ShizukuManager.checkPermissionAndBind()
+        try {
+            ShizukuManager.checkPermissionAndBind()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Gagal mengecek permission Shizuku: ${e.message}")
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        ShizukuManager.unbind()
+        try {
+            ShizukuManager.unbind()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Gagal unbind Shizuku: ${e.message}")
+        }
     }
 }

@@ -30,6 +30,7 @@ object ShizukuManager {
 
     private var shellService: IShellService? = null
     private var appContext: Context? = null
+    private var isInitialized = false
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         Log.i(TAG, "Shizuku binder received.")
@@ -63,9 +64,14 @@ object ShizukuManager {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.i(TAG, "ShellService connected.")
-            shellService = IShellService.Stub.asInterface(service)
-            _isUserServiceBound.value = true
-            _statusText.value = "Shizuku Terhubung & Aktif"
+            try {
+                shellService = IShellService.Stub.asInterface(service)
+                _isUserServiceBound.value = true
+                _statusText.value = "Shizuku Terhubung & Aktif"
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengonversi interface ShellService", e)
+                _statusText.value = "Gagal Menghubungkan Service"
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -82,11 +88,13 @@ object ShizukuManager {
     }
 
     fun initialize(context: Context) {
+        if (isInitialized) return
         appContext = context.applicationContext
         try {
             Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
             Shizuku.addBinderDeadListener(binderDeadListener)
             Shizuku.addRequestPermissionResultListener(permissionResultListener)
+            isInitialized = true
             checkPermissionAndBind()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize Shizuku listeners", e)
@@ -108,8 +116,7 @@ object ShizukuManager {
                 return
             }
 
-            val granted =
-                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+            val granted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
             _isPermissionGranted.value = granted
 
             if (granted) {
@@ -145,6 +152,8 @@ object ShizukuManager {
 
     private fun bindUserService() {
         val context = appContext ?: return
+        if (_isUserServiceBound.value) return
+        
         try {
             val args = Shizuku.UserServiceArgs(
                 ComponentName(context.packageName, ShellService::class.java.name)
@@ -180,6 +189,7 @@ object ShizukuManager {
             Shizuku.removeBinderReceivedListener(binderReceivedListener)
             Shizuku.removeBinderDeadListener(binderDeadListener)
             Shizuku.removeRequestPermissionResultListener(permissionResultListener)
+            isInitialized = false
         } catch (e: Exception) {
             Log.e(TAG, "Error unbinding Shizuku UserService", e)
         }
