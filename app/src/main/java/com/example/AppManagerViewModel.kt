@@ -28,12 +28,17 @@ data class AppManagerState(
     val usedRamGb: Float = 0f,
     val totalRamGb: Float = 0f,
     val isLoading: Boolean = true,
-    val shizukuStatus: String = "Checking Shizuku..."
+    val shizukuStatus: String = "Checking Shizuku...",
+    val currentTab: Int = 0 // 0: User Apps, 1: System Apps, 2: About
 )
 
 class AppManagerViewModel : ViewModel() {
     private val _state = MutableStateFlow(AppManagerState())
     val state: StateFlow<AppManagerState> = _state.asStateFlow()
+
+    fun selectTab(tabIndex: Int) {
+        _state.value = _state.value.copy(currentTab = tabIndex)
+    }
 
     fun loadData(context: Context) {
         viewModelScope.launch {

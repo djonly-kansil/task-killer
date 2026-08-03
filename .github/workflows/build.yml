@@ -45,7 +45,7 @@ jobs:
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
-        run: ./gradlew assembleDebug assembleRelease
+        run: ./gradlew assembleRelease
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4

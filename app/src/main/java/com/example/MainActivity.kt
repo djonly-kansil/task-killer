@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,10 +28,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -99,7 +101,6 @@ class MainActivity : ComponentActivity() {
 fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
-    var selectedBottomNav by remember { mutableIntStateOf(0) } // 0: Apps, 1: System, 2: About
 
     // Auto-update RAM every 2 seconds
     LaunchedEffect(Unit) {
@@ -114,8 +115,8 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             CustomBottomNavigationBar(
-                selectedIndex = selectedBottomNav,
-                onSelect = { selectedBottomNav = it }
+                selectedIndex = state.currentTab,
+                onSelect = { index -> viewModel.selectTab(index) }
             )
         }
     ) { innerPadding ->
@@ -125,7 +126,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Header
+            // Top Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -169,12 +170,19 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                         )
                     }
                 }
-                Box(
+
+                // Tombol Gear (Buka Settings App)
+                IconButton(
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                        context.startActivity(intent)
+                    },
                     modifier = Modifier
                         .size(44.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape),
-                    contentAlignment = Alignment.Center
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Settings,
@@ -267,8 +275,8 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // Section Title (Tanpa Dead Space)
-            val titleText = when (selectedBottomNav) {
+            // Section Title
+            val titleText = when (state.currentTab) {
                 0 -> "User Apps"
                 1 -> "System Apps"
                 else -> "About"
@@ -294,46 +302,45 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 )
             }
 
-            // Content List / View
+            // Area Konten Utama
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
-            } else if (selectedBottomNav == 2) {
-                // About View
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "AppController Pro v1.0\nPowered by Shizuku",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp
-                    )
-                }
             } else {
-                val currentList = if (selectedBottomNav == 0) state.userApps else state.systemApps
-                
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp, top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(currentList, key = { it.packageName }) { app ->
-                        AppItemCard(
-                            app = app,
-                            onForceStop = { viewModel.forceStopApp(app.packageName, context) },
-                            onInfo = {
-                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${app.packageName}")
-                                }
-                                context.startActivity(intent)
-                            },
-                            onUninstall = { viewModel.uninstallApp(app.packageName, context) }
-                        )
-                    }
+                when (state.currentTab) {
+                    0 -> AppListContent(apps = state.userApps, viewModel = viewModel, context = context)
+                    1 -> AppListContent(apps = state.systemApps, viewModel = viewModel, context = context)
+                    2 -> AboutScreenContent(shizukuStatus = state.shizukuStatus)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AppListContent(
+    apps: List<AppInfo>,
+    viewModel: AppManagerViewModel,
+    context: android.content.Context
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp, top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        items(apps, key = { it.packageName }) { app ->
+            AppItemCard(
+                app = app,
+                onForceStop = { viewModel.forceStopApp(app.packageName, context) },
+                onInfo = {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:${app.packageName}")
+                    }
+                    context.startActivity(intent)
+                },
+                onUninstall = { viewModel.uninstallApp(app.packageName, context) }
+            )
         }
     }
 }
@@ -357,7 +364,6 @@ fun AppItemCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon App
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -455,6 +461,37 @@ fun AppItemCard(
 }
 
 @Composable
+fun AboutScreenContent(shizukuStatus: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "AppController Pro",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "Version 1.0.0",
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Status Service: $shizukuStatus",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 fun CustomBottomNavigationBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit
@@ -462,55 +499,77 @@ fun CustomBottomNavigationBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(16.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(32.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(vertical = 8.dp, horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val navItems = listOf(
-                Triple("Apps", Icons.Default.Apps, 0),
-                Triple("System", Icons.Default.Security, 1),
-                Triple("About", Icons.Default.Info, 2)
+            BottomNavItem(
+                icon = Icons.Default.Apps,
+                label = "Apps",
+                isSelected = selectedIndex == 0,
+                onClick = { onSelect(0) }
             )
+            BottomNavItem(
+                icon = Icons.Default.Security,
+                label = "System",
+                isSelected = selectedIndex == 1,
+                onClick = { onSelect(1) }
+            )
+            BottomNavItem(
+                icon = Icons.Default.Info,
+                label = "About",
+                isSelected = selectedIndex == 2,
+                onClick = { onSelect(2) }
+            )
+        }
+    }
+}
 
-            navItems.forEach { (label, icon, index) ->
-                val isSelected = selectedIndex == index
-                
-                Surface(
-                    onClick = { onSelect(index) },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.height(40.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = label,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        if (isSelected) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = label,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
+@Composable
+fun BottomNavItem(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val backgroundModifier = if (isSelected) {
+        Modifier
+            .background(MaterialTheme.colorScheme.primary, CircleShape)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    } else {
+        Modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .then(backgroundModifier)
+            .clickable { onClick() },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+        )
+        if (isSelected) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary
+            )
         }
     }
 }
