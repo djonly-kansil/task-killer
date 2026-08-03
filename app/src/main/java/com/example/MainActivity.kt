@@ -102,10 +102,11 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
 
+    // Auto-update RAM dipercepat menjadi setiap 1000 ms (1 detik)
     LaunchedEffect(Unit) {
         while (true) {
             viewModel.updateRamInfo(context)
-            delay(2000)
+            delay(1000)
         }
     }
 
@@ -125,7 +126,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Header
+            // Header Top Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -208,7 +209,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // Section Header dengan Tombol KILL ALL jika di Tab User Apps
+            // Section Header & Kill All Button
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -225,7 +226,6 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     Box(modifier = Modifier.padding(top = 4.dp).width(32.dp).height(3.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)))
                 }
 
-                // Tombol KILL ALL Hanya Muncul di Tab User Apps (Tab 0)
                 if (state.currentTab == 0) {
                     Button(
                         onClick = { viewModel.killAllUserApps(context) },
@@ -239,7 +239,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // Area Konten
+            // Body Apps List
             if (state.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
@@ -303,54 +303,56 @@ fun AppItemCard(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon App
+            // Icon
             Box(
-                modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
+                modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (app.icon != null) {
-                    AsyncImage(model = app.icon, contentDescription = app.appName, modifier = Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)))
+                    AsyncImage(model = app.icon, contentDescription = app.appName, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
                 } else {
-                    Box(modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)))
+                    Box(modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp)))
                 }
             }
             
             Spacer(modifier = Modifier.width(10.dp))
             
-            // Nama & Package App
+            // Name & Package
             Column(modifier = Modifier.weight(1f)) {
-                Text(app.appName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             
-            // Ikon Power DATA ON/OFF (Tombol Bulat Merah/Hijau)
+            // Tombol DATA ON/OFF (Ukurannya ringkas 28dp)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 4.dp)
+                modifier = Modifier.padding(horizontal = 2.dp)
             ) {
                 Text(
                     text = if (app.isDataOn) "DATA ON" else "DATA OFF",
-                    fontSize = 8.sp,
+                    fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (app.isDataOn) Color.White else Color.Gray
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                IconButton(
-                    onClick = onToggleData,
+                
+                Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(28.dp)
                         .background(if (app.isDataOn) GeometricSuccess else GeometricError, CircleShape)
+                        .clickable { onToggleData() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.PowerSettingsNew,
                         contentDescription = "Data Toggle",
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(14.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             // Kolom Action (Auto Boot, Kill, Info, Del)
             Column(
@@ -358,60 +360,60 @@ fun AppItemCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Tombol AUTO BOOT (Hijau jika ON, Abu-Abu jika OFF)
+                    // AUTO BOOT
                     Button(
                         onClick = onToggleAutoBoot,
-                        modifier = Modifier.height(26.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (app.isAutoBootEnabled) GeometricSuccess else Color.Gray,
                             contentColor = Color.White
                         ),
                         shape = CircleShape
                     ) {
-                        Text("AUTO BOOT", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("AUTO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Tombol KILL (Merah jika Running, Abu-abu jika Off)
+                    // KILL BUTTON
                     Button(
                         onClick = onForceStop,
-                        enabled = app.isRunning, // Hanya bisa diklik jika aktif
-                        modifier = Modifier.height(26.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        enabled = app.isRunning,
+                        modifier = Modifier.height(24.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GeometricError,
                             contentColor = GeometricOnError,
-                            disabledContainerColor = Color.Gray.copy(alpha = 0.5f),
+                            disabledContainerColor = Color.Gray.copy(alpha = 0.4f),
                             disabledContentColor = Color.LightGray
                         ),
                         shape = CircleShape
                     ) {
-                        Text("KILL", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("KILL", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedButton(
                         onClick = onInfo,
-                        modifier = Modifier.height(24.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(22.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         shape = CircleShape
                     ) {
-                        Text("INFO", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text("INFO", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
                     if (!app.isSystemApp) {
                         OutlinedButton(
                             onClick = onUninstall,
-                            modifier = Modifier.height(24.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(22.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = GeometricError),
                             border = BorderStroke(1.dp, GeometricError.copy(alpha = 0.6f)),
                             shape = CircleShape
                         ) {
-                            Text("DEL", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text("DEL", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
