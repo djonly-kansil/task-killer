@@ -3,11 +3,6 @@ package com.example
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
 
-/**
- * Membungkus semua interaksi shell command via Shizuku di satu tempat,
- * supaya ViewModel tidak perlu tahu detail proses shell (sebelumnya
- * dijadikan private method di dalam ViewModel).
- */
 object ShizukuController {
 
     fun isReady(): Boolean {
@@ -34,7 +29,6 @@ object ShizukuController {
         }
     }
 
-    /** Menjalankan command tanpa butuh output. Return true kalau exit code 0. */
     fun execute(command: String): Boolean {
         if (!isReady()) return false
         return try {
@@ -46,7 +40,6 @@ object ShizukuController {
         }
     }
 
-    /** Menjalankan command dan mengembalikan output stdout-nya. */
     fun executeWithOutput(command: String): String {
         if (!isReady()) return ""
         return try {
@@ -59,12 +52,7 @@ object ShizukuController {
         }
     }
 
-    /**
-     * REVISI: sebelumnya setiap aplikasi memicu satu proses shell baru
-     * ("pidof <package>") saat loadData(), jadi bisa ratusan proses shell
-     * berurutan untuk device dengan banyak app terinstall. Sekarang cukup
-     * SATU kali panggilan shell untuk ambil semua proses yang berjalan.
-     */
+    // Mengambil SEMUA proses running dalam 1x panggil Shell (Sangat Cepat)
     fun getRunningPackages(): Set<String> {
         if (!isReady()) return emptySet()
         val output = executeWithOutput("ps -A -o NAME")
@@ -74,23 +62,12 @@ object ShizukuController {
             .toSet()
     }
 
-    /**
-     * REVISI: sebelumnya checkAppNetworkStatus() selalu return true (hardcoded/stub)
-     * dan isAutoBootEnabled selalu di-set true saat load (hardcoded), jadi status
-     * yang ditampilkan di UI tidak pernah mencerminkan kondisi asli device.
-     * Sekarang keduanya dicek nyata lewat appops, digabung dalam satu proses shell
-     * (bukan dua) supaya tidak menambah beban terlalu banyak.
-     */
-    fun getAppOpsStatus(packageName: String, uid: Int): Pair<Boolean, Boolean> {
-        if (!isReady()) return Pair(true, false)
-        val output = executeWithOutput(
-            "cmd appops get --uid $uid RUN_IN_BACKGROUND; echo '---SPLIT---'; cmd appops get $packageName BOOT_COMPLETED"
-        )
-        val parts = output.split("---SPLIT---")
-        val networkPart = parts.getOrElse(0) { "" }
-        val bootPart = parts.getOrElse(1) { "" }
-        val isDataOn = !networkPart.contains("deny", ignoreCase = true)
-        val isAutoBootEnabled = bootPart.contains("allow", ignoreCase = true)
-        return Pair(isDataOn, isAutoBootEnabled)
+    // Force stop tingkat tinggi (termasuk --user 0 dan kill-uid)
+    fun forceStopPowerful(packageName: String, uid: Int): Boolean {
+        if (!isReady()) return false
+        val cmd1 = "am force-stop --user 0 $packageName"
+        val cmd2 = "cmd activity kill-uid --user 0 $packageName"
+        val cmd3 = "am kill --user 0 $packageName"
+        return execute("$cmd1; $cmd2; $cmd3")
     }
 }

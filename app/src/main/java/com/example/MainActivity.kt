@@ -1,6 +1,11 @@
 package com.example
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,6 +21,15 @@ class MainActivity : ComponentActivity() {
         private const val SHIZUKU_PERMISSION_REQUEST_CODE = 100
     }
 
+    // BroadcastReceiver untuk mendeteksi perubahan status jaringan & aplikasi HP secara Real-Time
+    private val autoReloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            context?.let {
+                viewModel.loadData(it)
+            }
+        }
+    }
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         runOnUiThread {
             checkShizukuPermission()
@@ -27,9 +41,6 @@ class MainActivity : ComponentActivity() {
         runOnUiThread { viewModel.checkShizukuStatus() }
     }
 
-    // REVISI: sebelumnya requestPermission() dipanggil tapi tidak ada listener
-    // hasilnya sama sekali, jadi UI tidak refresh otomatis setelah user
-    // menyetujui/menolak dialog izin Shizuku.
     private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
         if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
             runOnUiThread {
@@ -47,6 +58,18 @@ class MainActivity : ComponentActivity() {
         Shizuku.addBinderDeadListener(binderDeadListener)
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
 
+        // Register Receiver untuk perubahan Jaringan dan Install/Uninstall/Change App
+        val filter = IntentFilter().apply {
+            addAction(ConnectivityManager.CONNECTIVITY_ACTION)
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        
+        // Register receiver khusus connectivity
+        registerReceiver(autoReloadReceiver, IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION))
+
         viewModel.loadData(this)
 
         setContent {
@@ -58,6 +81,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            unregisterReceiver(autoReloadReceiver)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         Shizuku.removeBinderReceivedListener(binderReceivedListener)
         Shizuku.removeBinderDeadListener(binderDeadListener)
         Shizuku.removeRequestPermissionResultListener(permissionResultListener)
@@ -67,6 +95,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.updateRamInfo(this)
         viewModel.checkShizukuStatus()
+        viewModel.loadData(this) // Refresh otomatis saat aplikasi dibuka kembali dari background
     }
 
     private fun checkShizukuPermission() {

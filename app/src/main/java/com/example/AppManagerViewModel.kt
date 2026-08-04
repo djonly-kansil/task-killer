@@ -4,6 +4,8 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +27,15 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(errorMessage = null)
     }
 
+    // Mengecek apakah Jaringan secara keseluruhan ON (Wifi ATAU Seluler)
+    fun isDeviceNetworkActive(context: Context): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+               caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+    }
+
     fun loadData(context: Context) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
@@ -36,8 +47,7 @@ class AppManagerViewModel : ViewModel() {
                 val pm = context.packageManager
                 val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
 
-                // REVISI: ambil daftar proses berjalan sekali saja di awal,
-                // bukan spawn shell baru untuk tiap aplikasi di dalam loop.
+                // 1. Ambil seluruh proses running dalam SATU pemanggilan tunggal (Cepat)
                 val runningPackages = ShizukuController.getRunningPackages()
 
                 val userApps = mutableListOf<AppInfo>()
@@ -49,18 +59,14 @@ class AppManagerViewModel : ViewModel() {
                     val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                     val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
 
-                    // REVISI: status data & auto-boot sekarang dicek nyata,
-                    // bukan hardcoded true seperti sebelumnya.
-                    val (isDataOn, isAutoBootEnabled) = ShizukuController.getAppOpsStatus(pkg.packageName, appInfo.uid)
-
                     val info = AppInfo(
                         appName = name,
                         packageName = pkg.packageName,
                         isSystemApp = isSystem,
                         icon = icon,
                         isRunning = runningPackages.contains(pkg.packageName),
-                        isDataOn = isDataOn,
-                        isAutoBootEnabled = isAutoBootEnabled,
+                        isDataOn = true, // Status default, dikontrol oleh Network Toggle
+                        isAutoBootEnabled = false,
                         uid = appInfo.uid
                     )
 
@@ -81,6 +87,18 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
+    // Memperbarui aplikasi tunggal tanpa harus mereload seluruh list
+    fun refreshSingleAppStatus(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val runningPackages = ShizukuController.getRunningPackages()
+            val isStillRunning = runningPackages.contains(packageName)
+            
+            withContext(Dispatchers.Main) {
+                updateSingleAppRunningState(packageName, isStillRunning)
+            }
+        }
+    }
+
     fun updateRamInfo(context: Context) {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
@@ -98,16 +116,16 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(shizukuStatus = ShizukuController.getStatusText())
     }
 
-    fun forceStopApp(packageName: String, context: Context) {
+    // Force Stop Powerful (Masalah 4)
+    fun forceStopApp(packageName: String, uid: Int, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val ok1 = ShizukuController.execute("am force-stop $packageName")
-            val ok2 = ShizukuController.execute("cmd activity kill-uid --user 0 $packageName")
+            val ok = ShizukuController.forceStopPowerful(packageName, uid)
             withContext(Dispatchers.Main) {
-                if (!ok1 && !ok2) {
-                    _state.value = _state.value.copy(errorMessage = "Gagal menghentikan aplikasi. Pastikan Shizuku aktif & izin diberikan.")
-                } else {
-                    updateSingleAppRunningState(packageName, false)
+                if (!ok) {
+                    _state.value = _state.value.copy(errorMessage = "Gagal mematikan $packageName. Cek izin Shizuku.")
                 }
+                // Langsung update status running secara lokal agar tombol abu-abu
+                updateSingleAppRunningState(packageName, false)
                 updateRamInfo(context)
             }
         }
@@ -116,36 +134,32 @@ class AppManagerViewModel : ViewModel() {
     fun killAllUserApps(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val appsToKill = _state.value.userApps.filter { it.isRunning }
-            var anyFailed = false
             appsToKill.forEach { app ->
-                if (!ShizukuController.execute("am force-stop ${app.packageName}")) anyFailed = true
+                ShizukuController.forceStopPowerful(app.packageName, app.uid)
             }
             withContext(Dispatchers.Main) {
-                if (anyFailed) {
-                    _state.value = _state.value.copy(errorMessage = "Sebagian aplikasi gagal dihentikan.")
-                }
                 loadData(context)
             }
         }
     }
 
+    // Toggle Data Network (Masalah 2)
     fun toggleDataNetwork(packageName: String, uid: Int, currentStatus: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
             val ok = if (newStatus) {
-                // Biarkan Internet Aktif
-                ShizukuController.execute("cmd netpolicy remove restrict-background-whitelist $uid") and
-                    ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND allow")
+                // Izinkan Akses Data
+                ShizukuController.execute("cmd netpolicy remove reject-admin $uid") and
+                ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND allow")
             } else {
-                // Matikan Akses Jaringan/Internet Aplikasi
-                ShizukuController.execute("cmd netpolicy add restrict-background-whitelist $uid") and
-                    ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND deny") and
-                    ShizukuController.execute("cmd netpolicy add firewall-chain-rule $uid deny")
+                // Blokir Total Akses Data Aplikasi
+                ShizukuController.execute("cmd netpolicy add reject-admin $uid") and
+                ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND deny")
             }
 
             withContext(Dispatchers.Main) {
                 if (!ok) {
-                    _state.value = _state.value.copy(errorMessage = "Gagal mengubah status jaringan aplikasi.")
+                    _state.value = _state.value.copy(errorMessage = "Gagal mengubah aturan jaringan aplikasi.")
                 } else {
                     updateAppNetworkState(packageName, newStatus)
                 }
