@@ -47,8 +47,8 @@
         <!-- BARU: service filter jaringan lokal. permission BIND_VPN_SERVICE memastikan
              hanya sistem yang bisa bind ke service ini meski exported="true" (ini pola
              standar semua VpnService, bukan celah keamanan).
-             foregroundServiceType="specialUse" WAJIB karena targetSdk 36 -- tidak ada
-             tipe foreground service bawaan (camera/location/dll) yang cocok untuk
+             foregroundServiceType="specialUse" WAJIB karena targetSdk 36, sebab tidak
+             ada tipe foreground service bawaan (camera/location/dll) yang cocok untuk
              filter jaringan lokal seperti ini, jadi dipakai kategori "specialUse". -->
         <service
             android:name=".LocalVpnService"
