@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,14 +42,8 @@ fun AppListContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(apps, key = { it.packageName }) { app ->
-            // Perhitungan Status Hijau/Merah:
-            // Status Hijau jika Jaringan Device Aktif (Wifi/Seluler ON) DAN Toggle Data App Aktif
-            val isDeviceConnected = viewModel.isDeviceNetworkActive(context)
-            val isDataActive = isDeviceConnected && app.isDataOn
-
             AppItemCard(
                 app = app,
-                isDataActive = isDataActive,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
                 onToggleData = { viewModel.toggleDataNetwork(app.packageName, app.uid, app.isDataOn) },
                 onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
@@ -67,15 +62,12 @@ fun AppListContent(
 @Composable
 fun AppItemCard(
     app: AppInfo,
-    isDataActive: Boolean,
     onForceStop: () -> Unit,
     onToggleData: () -> Unit,
     onToggleAutoBoot: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
-    val statusColor = if (isDataActive) GeometricSuccess else GeometricError
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -86,6 +78,7 @@ fun AppItemCard(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icon
             Box(
                 modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
@@ -99,28 +92,32 @@ fun AppItemCard(
 
             Spacer(modifier = Modifier.width(10.dp))
 
+            // Name & Package
             Column(modifier = Modifier.weight(1f)) {
                 Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
-            // Status DATA (Hijau jika salah satu/keduanya ON, Merah jika keduanya OFF)
+            // Tombol DATA ON/OFF (Ukurannya ringkas 28dp)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 2.dp)
             ) {
                 Text(
-                    text = if (isDataActive) "DATA ON" else "DATA OFF",
+                    text = if (app.isDataOn) "DATA ON" else "DATA OFF",
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,
-                    color = statusColor
+                    // REVISI: sebelumnya Color.White/Color.Gray hardcoded, bisa tidak
+                    // kontras kalau containerColor Card terang (light theme). Dipakai
+                    // warna aksen yang sama dengan tombol toggle di bawahnya.
+                    color = if (app.isDataOn) GeometricSuccess else GeometricError
                 )
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .background(statusColor, CircleShape)
+                        .background(if (app.isDataOn) GeometricSuccess else GeometricError, CircleShape)
                         .clickable { onToggleData() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -135,11 +132,13 @@ fun AppItemCard(
 
             Spacer(modifier = Modifier.width(6.dp))
 
+            // Kolom Action (Auto Boot, Kill, Info, Del)
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // AUTO BOOT
                     Button(
                         onClick = onToggleAutoBoot,
                         modifier = Modifier.height(24.dp),
@@ -153,7 +152,7 @@ fun AppItemCard(
                         Text("AUTO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // KILL BUTTON (Tombol disembunyikan/disabled jika tidak running)
+                    // KILL BUTTON
                     Button(
                         onClick = onForceStop,
                         enabled = app.isRunning,
