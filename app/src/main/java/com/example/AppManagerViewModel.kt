@@ -4,7 +4,6 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -13,28 +12,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import rikka.shizuku.Shizuku
-
-data class AppInfo(
-    val appName: String,
-    val packageName: String,
-    val isSystemApp: Boolean,
-    val icon: Drawable? = null,
-    val isRunning: Boolean = false,
-    val isDataOn: Boolean = true,
-    val isAutoBootEnabled: Boolean = false,
-    val uid: Int = 0
-)
-
-data class AppManagerState(
-    val userApps: List<AppInfo> = emptyList(),
-    val systemApps: List<AppInfo> = emptyList(),
-    val usedRamGb: Float = 0f,
-    val totalRamGb: Float = 0f,
-    val isLoading: Boolean = true,
-    val shizukuStatus: String = "Checking Shizuku...",
-    val currentTab: Int = 0
-)
 
 class AppManagerViewModel : ViewModel() {
     private val _state = MutableStateFlow(AppManagerState())
@@ -44,56 +21,58 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(currentTab = tabIndex)
     }
 
+    fun clearError() {
+        _state.value = _state.value.copy(errorMessage = null)
+    }
+
     fun loadData(context: Context) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
-            
+
             updateRamInfo(context)
             checkShizukuStatus()
-            
+
             val (user, system) = withContext(Dispatchers.IO) {
                 val pm = context.packageManager
                 val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
-                
+
+                // REVISI: ambil daftar proses berjalan sekali saja di awal,
+                // bukan spawn shell baru untuk tiap aplikasi di dalam loop.
+                val runningPackages = ShizukuController.getRunningPackages()
+
                 val userApps = mutableListOf<AppInfo>()
                 val systemApps = mutableListOf<AppInfo>()
-                
-                packages.forEach { pkg ->
-                    val appInfo = pkg.applicationInfo
-                    if (appInfo != null) {
-                        val name = pm.getApplicationLabel(appInfo).toString()
-                        val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                        val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
-                        
-                        // Cek status running asli menggunakan pidof via Shizuku
-                        val isRunning = checkIsAppRunningViaShizuku(pkg.packageName)
-                        val isDataOn = checkAppNetworkStatus(appInfo.uid, pkg.packageName)
 
-                        val info = AppInfo(
-                            appName = name,
-                            packageName = pkg.packageName,
-                            isSystemApp = isSystem,
-                            icon = icon,
-                            isRunning = isRunning,
-                            isDataOn = isDataOn,
-                            isAutoBootEnabled = true,
-                            uid = appInfo.uid
-                        )
-                        
-                        if (isSystem) {
-                            systemApps.add(info)
-                        } else {
-                            userApps.add(info)
-                        }
-                    }
+                packages.forEach { pkg ->
+                    val appInfo = pkg.applicationInfo ?: return@forEach
+                    val name = pm.getApplicationLabel(appInfo).toString()
+                    val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
+
+                    // REVISI: status data & auto-boot sekarang dicek nyata,
+                    // bukan hardcoded true seperti sebelumnya.
+                    val (isDataOn, isAutoBootEnabled) = ShizukuController.getAppOpsStatus(pkg.packageName, appInfo.uid)
+
+                    val info = AppInfo(
+                        appName = name,
+                        packageName = pkg.packageName,
+                        isSystemApp = isSystem,
+                        icon = icon,
+                        isRunning = runningPackages.contains(pkg.packageName),
+                        isDataOn = isDataOn,
+                        isAutoBootEnabled = isAutoBootEnabled,
+                        uid = appInfo.uid
+                    )
+
+                    if (isSystem) systemApps.add(info) else userApps.add(info)
                 }
-                
+
                 userApps.sortBy { it.appName.lowercase() }
                 systemApps.sortBy { it.appName.lowercase() }
-                
+
                 Pair(userApps, systemApps)
             }
-            
+
             _state.value = _state.value.copy(
                 userApps = user,
                 systemApps = system,
@@ -116,28 +95,19 @@ class AppManagerViewModel : ViewModel() {
     }
 
     fun checkShizukuStatus() {
-        try {
-            val status = if (Shizuku.pingBinder()) {
-                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    "Shizuku Connected & Granted"
-                } else {
-                    "Shizuku Running (Permission Denied)"
-                }
-            } else {
-                "Shizuku Not Running"
-            }
-            _state.value = _state.value.copy(shizukuStatus = status)
-        } catch (e: Throwable) {
-            _state.value = _state.value.copy(shizukuStatus = "Shizuku Error")
-        }
+        _state.value = _state.value.copy(shizukuStatus = ShizukuController.getStatusText())
     }
 
     fun forceStopApp(packageName: String, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            executeShizukuCommand("am force-stop $packageName")
-            executeShizukuCommand("cmd activity kill-uid --user 0 $packageName")
+            val ok1 = ShizukuController.execute("am force-stop $packageName")
+            val ok2 = ShizukuController.execute("cmd activity kill-uid --user 0 $packageName")
             withContext(Dispatchers.Main) {
-                updateSingleAppRunningState(packageName, false)
+                if (!ok1 && !ok2) {
+                    _state.value = _state.value.copy(errorMessage = "Gagal menghentikan aplikasi. Pastikan Shizuku aktif & izin diberikan.")
+                } else {
+                    updateSingleAppRunningState(packageName, false)
+                }
                 updateRamInfo(context)
             }
         }
@@ -146,10 +116,14 @@ class AppManagerViewModel : ViewModel() {
     fun killAllUserApps(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val appsToKill = _state.value.userApps.filter { it.isRunning }
+            var anyFailed = false
             appsToKill.forEach { app ->
-                executeShizukuCommand("am force-stop ${app.packageName}")
+                if (!ShizukuController.execute("am force-stop ${app.packageName}")) anyFailed = true
             }
             withContext(Dispatchers.Main) {
+                if (anyFailed) {
+                    _state.value = _state.value.copy(errorMessage = "Sebagian aplikasi gagal dihentikan.")
+                }
                 loadData(context)
             }
         }
@@ -158,20 +132,23 @@ class AppManagerViewModel : ViewModel() {
     fun toggleDataNetwork(packageName: String, uid: Int, currentStatus: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
-            
-            if (newStatus) {
+            val ok = if (newStatus) {
                 // Biarkan Internet Aktif
-                executeShizukuCommand("cmd netpolicy remove restrict-background-whitelist $uid")
-                executeShizukuCommand("cmd appops set --uid $uid RUN_IN_BACKGROUND allow")
+                ShizukuController.execute("cmd netpolicy remove restrict-background-whitelist $uid") and
+                    ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND allow")
             } else {
                 // Matikan Akses Jaringan/Internet Aplikasi
-                executeShizukuCommand("cmd netpolicy add restrict-background-whitelist $uid")
-                executeShizukuCommand("cmd appops set --uid $uid RUN_IN_BACKGROUND deny")
-                executeShizukuCommand("cmd netpolicy add firewall-chain-rule $uid deny")
+                ShizukuController.execute("cmd netpolicy add restrict-background-whitelist $uid") and
+                    ShizukuController.execute("cmd appops set --uid $uid RUN_IN_BACKGROUND deny") and
+                    ShizukuController.execute("cmd netpolicy add firewall-chain-rule $uid deny")
             }
-            
+
             withContext(Dispatchers.Main) {
-                updateAppNetworkState(packageName, newStatus)
+                if (!ok) {
+                    _state.value = _state.value.copy(errorMessage = "Gagal mengubah status jaringan aplikasi.")
+                } else {
+                    updateAppNetworkState(packageName, newStatus)
+                }
             }
         }
     }
@@ -180,36 +157,28 @@ class AppManagerViewModel : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
             val mode = if (newStatus) "allow" else "ignore"
-            executeShizukuCommand("cmd appops set $packageName BOOT_COMPLETED $mode")
-            
+            val ok = ShizukuController.execute("cmd appops set $packageName BOOT_COMPLETED $mode")
+
             withContext(Dispatchers.Main) {
-                updateAppAutoBootState(packageName, newStatus)
+                if (!ok) {
+                    _state.value = _state.value.copy(errorMessage = "Gagal mengubah pengaturan auto-boot.")
+                } else {
+                    updateAppAutoBootState(packageName, newStatus)
+                }
             }
         }
     }
 
     fun uninstallApp(packageName: String, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            executeShizukuCommand("pm uninstall $packageName")
+            val ok = ShizukuController.execute("pm uninstall $packageName")
             withContext(Dispatchers.Main) {
+                if (!ok) {
+                    _state.value = _state.value.copy(errorMessage = "Gagal menghapus aplikasi.")
+                }
                 loadData(context)
             }
         }
-    }
-
-    private fun checkIsAppRunningViaShizuku(packageName: String): Boolean {
-        if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return false
-        return try {
-            val output = executeShizukuCommandWithOutput("pidof $packageName")
-            output.trim().isNotEmpty()
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun checkAppNetworkStatus(uid: Int, packageName: String): Boolean {
-        // Default bernilai true kecuali dibatasi
-        return true
     }
 
     private fun updateSingleAppRunningState(packageName: String, isRunning: Boolean) {
@@ -231,28 +200,5 @@ class AppManagerViewModel : ViewModel() {
             userApps = _state.value.userApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it },
             systemApps = _state.value.systemApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it }
         )
-    }
-
-    private fun executeShizukuCommand(command: String) {
-        if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return
-        try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-            process.waitFor()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun executeShizukuCommandWithOutput(command: String): String {
-        if (!Shizuku.pingBinder() || Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) return ""
-        return try {
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
-            val reader = process.inputStream.bufferedReader()
-            val output = reader.readText()
-            process.waitFor()
-            output
-        } catch (e: Exception) {
-            ""
-        }
     }
 }
