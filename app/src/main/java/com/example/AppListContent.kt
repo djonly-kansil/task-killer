@@ -41,7 +41,14 @@ import com.example.ui.theme.GeometricSuccess
 fun AppListContent(
     apps: List<AppInfo>,
     viewModel: AppManagerViewModel,
-    context: Context
+    context: Context,
+    // REVISI (masalah: tidak ada peringatan "aktifkan VPN dulu" saat ganti mode
+    // data): dulu dropdown mode jaringan langsung memanggil setAppNetworkMode()
+    // tanpa cek apakah VPN filter sedang menyala -- padahal mode selain ALL baru
+    // benar-benar berlaku begitu VPN aktif. Parameter ini WAJIB diisi pemanggil
+    // (AppManagerScreen) dengan state.isVpnActive, supaya AppItemCard bisa
+    // menampilkan hint sebelum menerapkan mode non-ALL saat VPN masih mati.
+    isVpnActive: Boolean
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -51,6 +58,7 @@ fun AppListContent(
         items(apps, key = { it.packageName }) { app ->
             AppItemCard(
                 app = app,
+                isVpnActive = isVpnActive,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
                 onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
                 onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
@@ -69,12 +77,19 @@ fun AppListContent(
 @Composable
 fun AppItemCard(
     app: AppInfo,
+    isVpnActive: Boolean,
     onForceStop: () -> Unit,
     onSelectNetworkMode: (NetworkAccessMode) -> Unit,
     onToggleAutoBoot: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
+    // REVISI: dulu setiap DropdownMenuItem langsung memanggil onSelectNetworkMode()
+    // tanpa cek status VPN. Sekarang, kalau user memilih mode selain ALL saat VPN
+    // belum aktif, tampilkan dialog hint dulu -- rule tetap bisa disimpan (sesuai
+    // desain: rule persisten & baru berlaku begitu VPN dinyalakan), tapi user jadi
+    // sadar dulu bahwa itu belum langsung berpengaruh ke jaringan.
+    var pendingVpnHintMode by remember { mutableStateOf<NetworkAccessMode?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -145,7 +160,11 @@ fun AppItemCard(
                                 leadingIcon = { Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode)) },
                                 onClick = {
                                     menuExpanded = false
-                                    onSelectNetworkMode(mode)
+                                    if (mode != NetworkAccessMode.ALL && !isVpnActive) {
+                                        pendingVpnHintMode = mode
+                                    } else {
+                                        onSelectNetworkMode(mode)
+                                    }
                                 }
                             )
                         }
@@ -220,6 +239,30 @@ fun AppItemCard(
                 }
             }
         }
+    }
+
+    val hintMode = pendingVpnHintMode
+    if (hintMode != null) {
+        AlertDialog(
+            onDismissRequest = { pendingVpnHintMode = null },
+            title = { Text("VPN belum aktif") },
+            text = {
+                Text(
+                    "Mode \"${networkModeLabel(hintMode)}\" untuk ${app.appName} akan tersimpan, " +
+                        "tapi belum berpengaruh ke jaringan sampai Anda menyalakan VPN di layar utama. " +
+                        "Simpan aturan ini sekarang?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSelectNetworkMode(hintMode)
+                    pendingVpnHintMode = null
+                }) { Text("Simpan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingVpnHintMode = null }) { Text("Batal") }
+            }
+        )
     }
 }
 

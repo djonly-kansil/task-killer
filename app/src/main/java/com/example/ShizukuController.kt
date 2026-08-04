@@ -14,7 +14,24 @@ object ShizukuController {
         val runningPackages: Set<String> = emptySet(),
         val bootIgnoredPackages: Set<String> = emptySet(),
         val bgDataBlockedUids: Set<Int> = emptySet()
-    )
+    ) {
+        /**
+         * REVISI (masalah: "Tombol Volume Asisten" / "Baris Samping Cerdas" & app
+         * lain terbaca tidak aktif padahal jelas aktif di layar):
+         * Sebelumnya dicek dengan runningPackages.contains(packageName) -- exact
+         * match string. Masalahnya, banyak app overlay/accessibility (termasuk dua
+         * app di atas) sengaja menjalankan service-nya di PROSES TERPISAH lewat
+         * android:process=":xxx" di manifest (biasa dipakai supaya proses utama
+         * bisa di-kill sistem tanpa mematikan overlay-nya). Proses seperti ini
+         * muncul di "ps" sebagai "com.paket.nya:xxx", BUKAN "com.paket.nya" persis
+         * -- jadi exact match selalu gagal walau app-nya nyata-nyata jalan.
+         * Sekarang packageName dianggap "berjalan" kalau ada proses yang namanya
+         * sama persis ATAU diawali "packageName:" (konvensi standar Android untuk
+         * proses turunan/sub-process).
+         */
+        fun isRunning(packageName: String): Boolean =
+            runningPackages.any { it == packageName || it.startsWith("$packageName:") }
+    }
 
     fun isReady(): Boolean {
         return try {
@@ -130,10 +147,18 @@ object ShizukuController {
         return ok1 || ok2
     }
 
-    /** Cek status proses SATU aplikasi secara real, dipakai untuk verifikasi setelah kill. */
+    /**
+     * Cek status proses SATU aplikasi secara real, dipakai untuk verifikasi setelah kill.
+     * REVISI: sebelumnya "grep -x" (exact match satu baris) -- app yang jalan lewat
+     * proses turunan (":xxx") lolos dianggap "sudah mati" walau sebenarnya masih hidup
+     * di sub-process-nya. Sekarang pakai aturan pencocokan yang sama dengan
+     * BulkState.isRunning() (exact ATAU diawali "packageName:").
+     */
     fun isPackageRunning(packageName: String): Boolean {
         if (!isReady()) return false
-        val output = executeWithOutput("ps -A -o NAME | grep -x \"$packageName\"")
-        return output.trim().isNotEmpty()
+        val output = executeWithOutput("ps -A -o NAME")
+        return output.lineSequence()
+            .map { it.trim() }
+            .any { it == packageName || it.startsWith("$packageName:") }
     }
 }

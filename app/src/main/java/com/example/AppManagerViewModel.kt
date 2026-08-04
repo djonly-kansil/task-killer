@@ -61,7 +61,7 @@ class AppManagerViewModel : ViewModel() {
                         packageName = pkg.packageName,
                         isSystemApp = isSystem,
                         icon = icon,
-                        isRunning = bulk.runningPackages.contains(pkg.packageName),
+                        isRunning = bulk.isRunning(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
                         isAutoBootEnabled = !bulk.bootIgnoredPackages.contains(pkg.packageName),
                         uid = appInfo.uid,
@@ -114,7 +114,7 @@ class AppManagerViewModel : ViewModel() {
     }
 
     private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState): AppInfo {
-        val newIsRunning = bulk.runningPackages.contains(packageName)
+        val newIsRunning = bulk.isRunning(packageName)
         val newIsDataOn = !bulk.bgDataBlockedUids.contains(uid)
         val newIsAutoBoot = !bulk.bootIgnoredPackages.contains(packageName)
         return if (newIsRunning == isRunning && newIsDataOn == isDataOn && newIsAutoBoot == isAutoBootEnabled) {
@@ -157,14 +157,47 @@ class AppManagerViewModel : ViewModel() {
      */
     fun getVpnPrepareIntent(context: Context): Intent? = VpnController.prepareIntent(context)
 
+    /**
+     * REVISI (masalah: switch VPN "nyangkut" tidak bisa OFF, khususnya saat ada
+     * app dengan mode non-ALL):
+     * Sebelumnya, setelah VpnController.stop()/start() (yang cuma mengirim Intent
+     * ACTION_STOP/START lewat context.startService() -- proses ASYNC lewat
+     * ActivityManagerService, bukan langsung selesai saat pemanggilan return),
+     * kode langsung memanggil refreshVpnStatus() SEKALI di baris berikutnya. Intent
+     * itu belum tentu sudah diproses LocalVpnService (onStartCommand/onDestroy
+     * berjalan belakangan lewat message queue), jadi flag LocalVpnService.isRunning
+     * yang dibaca sering kali masih nilai LAMA -- switch pun terlihat "diam"/stuck
+     * karena state di UI dianggap tidak berubah (true->true), padahal sebenarnya
+     * command-nya sudah terkirim dan akan diproses sesaat lagi.
+     *
+     * Sekarang, setelah mengirim command, statusnya di-poll ulang berkala (tiap
+     * 100ms, maksimal ~2 detik) sampai benar-benar mencerminkan status service yang
+     * sesungguhnya -- switch akan otomatis menyesuaikan begitu LocalVpnService
+     * benar-benar selesai berhenti/menyala, tanpa perlu keluar-masuk app manual.
+     */
     fun startVpn(context: Context) {
         VpnController.start(context)
-        refreshVpnStatus(context)
+        viewModelScope.launch {
+            pollVpnStatusUntilStable(context, expected = true)
+        }
     }
 
     fun stopVpn(context: Context) {
         VpnController.stop(context)
-        refreshVpnStatus(context)
+        viewModelScope.launch {
+            pollVpnStatusUntilStable(context, expected = false)
+        }
+    }
+
+    private suspend fun pollVpnStatusUntilStable(context: Context, expected: Boolean) {
+        repeat(20) {
+            val actual = withContext(Dispatchers.IO) { VpnController.isRunning(context) }
+            if (_state.value.isVpnActive != actual) {
+                _state.value = _state.value.copy(isVpnActive = actual)
+            }
+            if (actual == expected) return
+            delay(100)
+        }
     }
 
     /**

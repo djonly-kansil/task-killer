@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,11 +31,19 @@ import com.example.ui.theme.GeometricOnError
 import com.example.ui.theme.GeometricSuccess
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // REVISI (masalah: switch VPN terlihat ON tapi belum benar-benar memfilter):
+    // state.isVpnActive cuma berarti "service hidup" (dipakai buat switch ON/OFF).
+    // isTunnelActive di sini status TUNNEL yang sebenarnya (baca dari
+    // VpnController.isTunnelActive, di-poll bareng RAM di bawah), dipakai khusus
+    // untuk teks status di kartu VPN Filter supaya tidak menyesatkan.
+    var isTunnelActive by remember { mutableStateOf(false) }
 
     // Dialog consent sistem VpnService.prepare() -- WAJIB dijalankan lewat
     // ActivityResultLauncher, tidak bisa startActivity biasa.
@@ -59,10 +68,12 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
         }
     }
 
-    // Auto-update RAM setiap 1000 ms (1 detik)
+    // Auto-update RAM setiap 1000 ms (1 detik) -- sekalian polling status tunnel
+    // VPN yang sebenarnya (lihat komentar isTunnelActive di atas).
     LaunchedEffect(Unit) {
         while (true) {
             viewModel.updateRamInfo(context)
+            isTunnelActive = VpnController.isTunnelActive(context)
             delay(1000)
         }
     }
@@ -159,7 +170,11 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                             Text("VPN FILTER", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
                         }
                         Text(
-                            text = if (state.isVpnActive) "Aktif — mode Wi-Fi/Seluler/Blokir berlaku" else "Nonaktif — mode selain ALL belum berlaku",
+                            text = when {
+                                !state.isVpnActive -> "Nonaktif — mode selain ALL belum berlaku"
+                                isTunnelActive -> "Aktif — sedang memfilter app yang dibatasi"
+                                else -> "Siap — belum ada app yang dibatasi saat ini"
+                            },
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 2.dp)
@@ -247,15 +262,25 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
             }
 
             // Body Apps List
-            if (state.isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
-            } else {
-                when (state.currentTab) {
-                    0 -> AppListContent(apps = state.userApps, viewModel = viewModel, context = context)
-                    1 -> AppListContent(apps = state.systemApps, viewModel = viewModel, context = context)
-                    2 -> AboutScreenContent(shizukuStatus = state.shizukuStatus)
+            // REVISI (fitur baru - reload manual, seperti reload tab di browser):
+            // swipe ke bawah pada daftar memicu viewModel.loadData(context), reload
+            // penuh (daftar app + rule + status). Indikator refresh mengikuti
+            // state.isLoading yang sudah ada -- tidak perlu state tambahan.
+            PullToRefreshBox(
+                isRefreshing = state.isLoading,
+                onRefresh = { viewModel.loadData(context) },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (state.isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
+                } else {
+                    when (state.currentTab) {
+                        0 -> AppListContent(apps = state.userApps, viewModel = viewModel, context = context, isVpnActive = state.isVpnActive)
+                        1 -> AppListContent(apps = state.systemApps, viewModel = viewModel, context = context, isVpnActive = state.isVpnActive)
+                        2 -> AboutScreenContent(shizukuStatus = state.shizukuStatus)
+                    }
                 }
             }
         }

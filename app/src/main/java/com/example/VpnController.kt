@@ -15,14 +15,12 @@ import androidx.core.content.ContextCompat
  * melihat service milik app sendiri dengan cara yang tidak selalu reliable untuk
  * VpnService, jadi flag statis in-process jauh lebih sederhana & instan dibaca.
  *
- * CATATAN: karena start VPN service berjalan async (lihat startForegroundService di
- * bawah), ada jeda singkat antara tombol ditekan & flag isRunning benar-benar jadi
- * true di proses sistem. AppManagerViewModel.startVpn() sudah memanggil
- * refreshVpnStatus() tepat sesudah start() -- pada kondisi sangat jarang, jeda itu
- * membuat kartu status baru ikut menyesuaikan di refresh berikutnya (mis. saat
- * MainActivity.onResume). Ini bukan bug fatal, cuma nuansa timing bawaan Android
- * service; beri tahu saya kalau mau dibuatkan lebih instan (perlu observable/Flow
- * tambahan di ViewModel).
+ * CATATAN: karena start/stop VPN service berjalan async (lihat startForegroundService
+ * di bawah, dan Intent ACTION_STOP yang dikirim lewat startService()), ada jeda
+ * singkat antara tombol ditekan & flag isRunning benar-benar berubah di proses
+ * sistem. AppManagerViewModel.startVpn()/stopVpn() menangani ini dengan polling
+ * status berkala (bukan cek sekali) sampai nilainya stabil, supaya switch di UI
+ * tidak pernah "nyangkut" di status lama.
  */
 object VpnController {
 
@@ -45,4 +43,16 @@ object VpnController {
     }
 
     fun isRunning(context: Context): Boolean = LocalVpnService.isRunning
+
+    /**
+     * REVISI (masalah: switch VPN terlihat ON tapi trafik belum benar-benar
+     * difilter selama belum ada app dengan mode non-ALL): isRunning() di atas
+     * cuma berarti "service-nya hidup", BUKAN berarti ada tunnel yang benar-benar
+     * terbentuk -- LocalVpnService sengaja tidak establish() interface kalau
+     * tidak ada satupun app yang perlu dibatasi saat ini. Fungsi ini mengekspos
+     * status tunnel yang SEBENARNYA secara terpisah, dipakai AppManagerScreen
+     * untuk menampilkan teks status yang jujur (mis. "siap, menunggu ada app
+     * dibatasi" vs "aktif memfilter").
+     */
+    fun isTunnelActive(context: Context): Boolean = LocalVpnService.isTunnelActive
 }

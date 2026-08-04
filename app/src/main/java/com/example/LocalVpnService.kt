@@ -67,6 +67,23 @@ class LocalVpnService : VpnService() {
         var isRunning: Boolean = false
             private set
 
+        /**
+         * REVISI (masalah: switch VPN terlihat ON tapi trafik belum benar-benar
+         * difilter): isRunning di atas cuma berarti "service-nya hidup", BUKAN
+         * berarti ada tunnel yang benar-benar terbentuk -- rebuild() sengaja tidak
+         * memanggil builder.establish() kalau tidak ada satupun app non-ALL (lihat
+         * catatan kelas). Dua konsep ini sebelumnya dicampur jadi satu boolean di
+         * AppManagerViewModel/AppManagerScreen, makanya switch bisa terlihat ON
+         * padahal belum ada yang benar-benar difilter. isTunnelActive di sini
+         * mencerminkan status tunnel yang SEBENARNYA, terpisah dari isRunning,
+         * supaya UI (lewat VpnController, perlu ditambahkan wrapper serupa
+         * isRunning()) bisa menampilkan dua status ini secara jujur/berbeda kalau
+         * diperlukan.
+         */
+        @Volatile
+        var isTunnelActive: Boolean = false
+            private set
+
         // Referensi service yang sedang berjalan supaya VpnRulesRepository bisa
         // memicu rebuild tanpa bind/IPC -- aman karena selalu dipakai di proses yang sama.
         @Volatile
@@ -87,8 +104,18 @@ class LocalVpnService : VpnService() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
+    /**
+     * REVISI (masalah: switch VPN nyangkut ON walau sudah di-OFF):
+     * isRunning sekarang di-set false SESEGERA MUNGKIN begitu Intent ACTION_STOP
+     * benar-benar diterima & diproses di sini -- bukan menunggu onDestroy() (yang
+     * baru dipanggil sistem belakangan lewat siklus Service async, bisa telat
+     * dibaca ViewModel). stopSelf() tetap dipanggil untuk memicu teardown asli
+     * (tunFd, network callback, dll) lewat onDestroy() seperti biasa.
+     */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            running = false
+            isRunning = false
             stopSelf()
             return START_NOT_STICKY
         }
@@ -147,6 +174,7 @@ class LocalVpnService : VpnService() {
             oldFd?.closeQuietly()
             tunFd = null
             readerThread = null
+            isTunnelActive = false
             return
         }
 
@@ -158,6 +186,7 @@ class LocalVpnService : VpnService() {
 
         tunFd = newFd
         readerThread = startDropperThread(newFd).also { it.start() }
+        isTunnelActive = true
 
         oldThread?.interrupt()
         oldFd?.closeQuietly()
@@ -232,6 +261,7 @@ class LocalVpnService : VpnService() {
     override fun onDestroy() {
         running = false
         isRunning = false
+        isTunnelActive = false
         activeInstance = null
 
         networkCallback?.let {
