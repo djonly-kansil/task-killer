@@ -20,7 +20,6 @@ import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 
-
 class LocalVpnService : VpnService() {
 
     private var tunFd: ParcelFileDescriptor? = null
@@ -42,16 +41,13 @@ class LocalVpnService : VpnService() {
         var isRunning: Boolean = false
             private set
 
-        
         @Volatile
         var isTunnelActive: Boolean = false
             private set
 
-
         @Volatile
         private var activeInstance: LocalVpnService? = null
 
-        
         fun reloadRules(context: Context) {
             activeInstance?.let { service ->
                 Handler(Looper.getMainLooper()).post {
@@ -66,7 +62,6 @@ class LocalVpnService : VpnService() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
-    
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             running = false
@@ -91,7 +86,6 @@ class LocalVpnService : VpnService() {
         rebuild()
     }
 
-    
     @Synchronized
     private fun rebuild() {
         if (!running) return
@@ -110,7 +104,6 @@ class LocalVpnService : VpnService() {
                     builder.addAllowedApplication(pkg)
                     addedAny = true
                 } catch (e: PackageManager.NameNotFoundException) {
-                    
                 }
             }
         }
@@ -119,7 +112,6 @@ class LocalVpnService : VpnService() {
         val oldThread = readerThread
 
         if (!addedAny) {
-            
             oldThread?.interrupt()
             oldFd?.closeQuietly()
             tunFd = null
@@ -135,7 +127,6 @@ class LocalVpnService : VpnService() {
         }
 
         if (newFd == null) {
-            
             oldThread?.interrupt()
             oldFd?.closeQuietly()
             tunFd = null
@@ -152,7 +143,6 @@ class LocalVpnService : VpnService() {
         oldFd?.closeQuietly()
     }
 
-    
     private fun computeCurrentlyBlockedUids(): Set<Int> {
         val rules = VpnRulesRepository.getAllRules(applicationContext)
         val blocked = mutableSetOf<Int>()
@@ -175,11 +165,9 @@ class LocalVpnService : VpnService() {
             try {
                 while (!Thread.currentThread().isInterrupted) {
                     val length = input.read(buffer)
-                    
                     if (length < 0) break
                 }
             } catch (e: IOException) {
-               
             }
         }
     }
@@ -205,7 +193,6 @@ class LocalVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        
         stopSelf()
         super.onRevoke()
     }
@@ -220,7 +207,6 @@ class LocalVpnService : VpnService() {
             try {
                 connectivityManager.unregisterNetworkCallback(it)
             } catch (e: IllegalArgumentException) {
-             
             }
         }
         networkCallback = null
@@ -237,7 +223,6 @@ class LocalVpnService : VpnService() {
         try {
             close()
         } catch (e: IOException) {
-            
         }
     }
 

@@ -3,17 +3,13 @@ package com.example
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
 
-
 object ShizukuController {
 
-    
     data class BulkState(
         val runningPackages: Set<String> = emptySet(),
-        
         val bootReceiverComponents: Map<String, List<String>> = emptyMap(),
         val bgDataBlockedUids: Set<Int> = emptySet()
     ) {
-        
         fun isRunning(packageName: String): Boolean =
             runningPackages.any { it == packageName || it.startsWith("$packageName:") }
     }
@@ -42,7 +38,6 @@ object ShizukuController {
         }
     }
 
-    
     fun execute(command: String): Boolean {
         if (!isReady()) return false
         return try {
@@ -54,7 +49,6 @@ object ShizukuController {
         }
     }
 
-    
     fun executeWithOutput(command: String): String {
         if (!isReady()) return ""
         return try {
@@ -67,11 +61,9 @@ object ShizukuController {
         }
     }
 
-    
     fun getBulkState(): BulkState {
         if (!isReady()) return BulkState()
 
-        
         val output = executeWithOutput(
             "ps -A -o NAME; " +
                 "echo '---BOOT_RECEIVERS---'; " +
@@ -89,7 +81,6 @@ object ShizukuController {
             .filter { it.isNotEmpty() && it != "NAME" }
             .toSet()
 
-        
         val bootReceiverComponents = bootPart.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() && it.contains('/') && !it.contains(' ') }
@@ -104,25 +95,42 @@ object ShizukuController {
         return BulkState(runningPackages, bootReceiverComponents, bgDataBlockedUids)
     }
 
-    
     fun setComponentEnabled(component: String, enabled: Boolean): Boolean {
-        val mode = if (enabled) "enable" else "disable"
-        return execute("pm $mode $component")
+        val command = if (enabled) {
+            "pm enable --user 0 $component"
+        } else {
+            "pm disable-user --user 0 $component"
+        }
+        return execute(command)
     }
 
-    
     fun forceStopPackage(packageName: String, uid: Int): Boolean {
         val ok1 = execute("am force-stop --user 0 $packageName")
         val ok2 = if (uid > 0) execute("cmd activity kill-uid --user 0 $uid") else false
         return ok1 || ok2
     }
 
-    
     fun isPackageRunning(packageName: String): Boolean {
         if (!isReady()) return false
         val output = executeWithOutput("ps -A -o NAME")
         return output.lineSequence()
             .map { it.trim() }
             .any { it == packageName || it.startsWith("$packageName:") }
+    }
+
+    fun analyzeWhyAppWontKill(packageName: String): String {
+        if (!isReady()) return "Shizuku belum siap."
+        val output = executeWithOutput("dumpsys activity services $packageName")
+        val bindings = output.lineSequence()
+            .filter { it.contains("Client:") || it.contains("binding") }
+            .map { it.trim() }
+            .take(3)
+            .toList()
+            
+        return if (bindings.isNotEmpty()) {
+            "Gagal kill. Ditahan oleh:\n" + bindings.joinToString("\n")
+        } else {
+            "Gagal kill. Aplikasi secara otomatis di-restart oleh sistem."
+        }
     }
 }
