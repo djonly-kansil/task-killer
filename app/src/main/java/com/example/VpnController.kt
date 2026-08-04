@@ -5,24 +5,46 @@ import android.content.Intent
 import android.net.VpnService
 import androidx.core.content.ContextCompat
 
-
+/**
+ * Kontrol VPN.
+ *
+ * PENTING: tombol switch VPN adalah MASTER SWITCH.
+ * - ON  -> service langsung dinyalakan & tunnel langsung dibangun, tanpa menunggu
+ *          logika/aturan per-aplikasi apa pun.
+ * - OFF -> tunnel langsung ditutup & service dimatikan, tanpa menunggu logika lain.
+ */
 object VpnController {
 
-    
     fun prepareIntent(context: Context): Intent? = VpnService.prepare(context.applicationContext)
 
+    /** Niat pengguna (master switch) yang disimpan permanen. */
+    fun isMasterEnabled(context: Context): Boolean =
+        VpnRulesRepository.isMasterEnabled(context)
+
     fun start(context: Context) {
-        val intent = Intent(context, LocalVpnService::class.java).setAction(LocalVpnService.ACTION_START)
+        // Set master state DULU supaya UI & service sepakat sejak detik pertama.
+        VpnRulesRepository.setMasterEnabled(context, true)
+        val intent = Intent(context, LocalVpnService::class.java)
+            .setAction(LocalVpnService.ACTION_START)
         ContextCompat.startForegroundService(context, intent)
     }
 
     fun stop(context: Context) {
-        val intent = Intent(context, LocalVpnService::class.java).setAction(LocalVpnService.ACTION_STOP)
-        context.startService(intent)
+        VpnRulesRepository.setMasterEnabled(context, false)
+        // Matikan tunnel secara langsung (tidak menunggu service menerima intent).
+        LocalVpnService.shutdownNow()
+        val intent = Intent(context, LocalVpnService::class.java)
+            .setAction(LocalVpnService.ACTION_STOP)
+        try {
+            context.startService(intent)
+        } catch (e: Exception) {
+            // service mungkin sudah mati; abaikan.
+        }
     }
 
-    fun isRunning(context: Context): Boolean = LocalVpnService.isRunning
+    /** Status yang dipakai UI = master switch (bukan hasil evaluasi aturan). */
+    fun isRunning(context: Context): Boolean =
+        VpnRulesRepository.isMasterEnabled(context) || LocalVpnService.isRunning
 
-    
     fun isTunnelActive(context: Context): Boolean = LocalVpnService.isTunnelActive
 }

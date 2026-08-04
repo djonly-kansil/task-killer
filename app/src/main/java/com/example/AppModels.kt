@@ -17,7 +17,6 @@ data class AppInfo(
     val icon: Drawable? = null,
     val isRunning: Boolean = false,
     val isDataOn: Boolean = true,
-    val hasBootReceiver: Boolean = false,
     val isAutoBootEnabled: Boolean = false,
     val uid: Int = 0,
     val networkAccessMode: NetworkAccessMode = NetworkAccessMode.ALL
@@ -32,6 +31,5 @@ data class AppManagerState(
     val shizukuStatus: String = "Checking Shizuku...",
     val currentTab: Int = 0,
     val errorMessage: String? = null,
-    val notice: String? = null,
     val isVpnActive: Boolean = false
 )

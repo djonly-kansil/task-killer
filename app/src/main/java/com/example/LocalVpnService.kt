@@ -18,7 +18,7 @@ import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import java.io.FileInputStream
 import java.io.IOException
-import java.nio.ByteBuffer
+
 
 class LocalVpnService : VpnService() {
 
@@ -48,12 +48,17 @@ class LocalVpnService : VpnService() {
         @Volatile
         private var activeInstance: LocalVpnService? = null
 
+        /** Hanya me-refresh aturan pada tunnel yang sudah hidup. Tidak menyalakan/mematikan VPN. */
         fun reloadRules(context: Context) {
-            activeInstance?.let { service ->
-                Handler(Looper.getMainLooper()).post {
-                    service.rebuild()
-                }
-            }
+            val service = activeInstance ?: return
+            Handler(Looper.getMainLooper()).post { service.rebuild() }
+        }
+
+        /** Mematikan tunnel SEKARANG (dipanggil langsung oleh master switch OFF). */
+        fun shutdownNow() {
+            isTunnelActive = false
+            isRunning = false
+            activeInstance?.hardStop()
         }
     }
 
@@ -64,28 +69,55 @@ class LocalVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            running = false
-            isRunning = false
-            stopSelf()
+            hardStop()
             return START_NOT_STICKY
         }
         startVpn()
         return START_STICKY
     }
 
+    /**
+     * MASTER ON: tunnel langsung dibangun tanpa syarat apa pun.
+     */
     private fun startVpn() {
-        if (running) return
-        running = true
-        isRunning = true
         activeInstance = this
-
-        startForeground(NOTIFICATION_ID, buildNotification())
-
-        currentTransportIsWifi = detectCurrentTransport()
-        registerNetworkCallback()
+        if (!running) {
+            running = true
+            isRunning = true
+            startForeground(NOTIFICATION_ID, buildNotification())
+            currentTransportIsWifi = detectCurrentTransport()
+            registerNetworkCallback()
+        }
         rebuild()
     }
 
+    private fun hardStop() {
+        running = false
+        isRunning = false
+        isTunnelActive = false
+        closeTunnel()
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (e: Exception) {
+            // abaikan
+        }
+        stopSelf()
+    }
+
+    @Synchronized
+    private fun closeTunnel() {
+        readerThread?.interrupt()
+        readerThread = null
+        tunFd?.closeQuietly()
+        tunFd = null
+    }
+
+    /**
+     * Membangun (ulang) tunnel. Selama master switch ON, tunnel SELALU dibangun,
+     * walaupun belum ada satu pun aplikasi yang dibatasi. Jika tidak ada aplikasi
+     * yang dibatasi, tunnel hanya mengikat aplikasi ini sendiri sehingga VPN benar-
+     * benar aktif tanpa mengganggu aplikasi lain.
+     */
     @Synchronized
     private fun rebuild() {
         if (!running) return
@@ -100,25 +132,27 @@ class LocalVpnService : VpnService() {
         var addedAny = false
         blockedUids.forEach { uid ->
             packageManager.getPackagesForUid(uid)?.forEach { pkg ->
+                if (pkg == packageName) return@forEach
                 try {
                     builder.addAllowedApplication(pkg)
                     addedAny = true
                 } catch (e: PackageManager.NameNotFoundException) {
+                    // paket hilang; lewati
                 }
+            }
+        }
+
+        if (!addedAny) {
+            // Tunnel tetap hidup, hanya mengikat diri sendiri (no-op untuk app lain).
+            try {
+                builder.addAllowedApplication(packageName)
+            } catch (e: PackageManager.NameNotFoundException) {
+                // seharusnya tidak terjadi
             }
         }
 
         val oldFd = tunFd
         val oldThread = readerThread
-
-        if (!addedAny) {
-            oldThread?.interrupt()
-            oldFd?.closeQuietly()
-            tunFd = null
-            readerThread = null
-            isTunnelActive = false
-            return
-        }
 
         val newFd = try {
             builder.establish()
@@ -127,6 +161,7 @@ class LocalVpnService : VpnService() {
         }
 
         if (newFd == null) {
+            // Izin VPN dicabut / gagal establish.
             oldThread?.interrupt()
             oldFd?.closeQuietly()
             tunFd = null
@@ -168,6 +203,7 @@ class LocalVpnService : VpnService() {
                     if (length < 0) break
                 }
             } catch (e: IOException) {
+                // tunnel ditutup
             }
         }
     }
@@ -193,7 +229,9 @@ class LocalVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        stopSelf()
+        // Izin VPN dicabut sistem/user -> master switch ikut OFF supaya UI konsisten.
+        VpnRulesRepository.setMasterEnabled(applicationContext, false)
+        hardStop()
         super.onRevoke()
     }
 
@@ -207,14 +245,12 @@ class LocalVpnService : VpnService() {
             try {
                 connectivityManager.unregisterNetworkCallback(it)
             } catch (e: IllegalArgumentException) {
+                // sudah terlepas
             }
         }
         networkCallback = null
 
-        readerThread?.interrupt()
-        readerThread = null
-        tunFd?.closeQuietly()
-        tunFd = null
+        closeTunnel()
 
         super.onDestroy()
     }
@@ -223,6 +259,7 @@ class LocalVpnService : VpnService() {
         try {
             close()
         } catch (e: IOException) {
+            // abaikan
         }
     }
 
@@ -246,8 +283,8 @@ class LocalVpnService : VpnService() {
         }
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("VPN Filter aktif")
-            .setContentText("Memfilter akses jaringan sesuai aturan per-aplikasi")
+            .setContentTitle("VPN aktif")
+            .setContentText("VPN dinyalakan lewat master switch")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setContentIntent(contentIntent)

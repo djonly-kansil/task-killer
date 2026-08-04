@@ -80,14 +80,6 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
         }
     }
 
-    
-    LaunchedEffect(state.notice) {
-        state.notice?.let { message ->
-            snackbarHostState.showSnackbar(message)
-            viewModel.clearNotice()
-        }
-    }
-
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.background,
@@ -171,9 +163,9 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                         }
                         Text(
                             text = when {
-                                !state.isVpnActive -> "Nonaktif — mode selain ALL belum berlaku"
-                                isTunnelActive -> "Aktif — sedang memfilter app yang dibatasi"
-                                else -> "Siap — belum ada app yang dibatasi saat ini"
+                                !state.isVpnActive -> "VPN OFF — switch ini master, VPN mati total"
+                                isTunnelActive -> "VPN ON — tunnel aktif"
+                                else -> "VPN ON — menyiapkan tunnel..."
                             },
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

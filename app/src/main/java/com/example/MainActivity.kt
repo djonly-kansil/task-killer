@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
         viewModel.updateRamInfo(this)
         viewModel.checkShizukuStatus()
         
-        viewModel.refreshLiveStatus(this)
+        viewModel.refreshLiveStatus()
 
         
         viewModel.refreshVpnStatus(this)

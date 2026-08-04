@@ -56,7 +56,7 @@ fun AppListContent(
                 isVpnActive = isVpnActive,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
                 onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
-                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled, context) },
+                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:${app.packageName}")
@@ -79,6 +79,8 @@ fun AppItemCard(
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
+    
+    var pendingVpnHintMode by remember { mutableStateOf<NetworkAccessMode?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -146,7 +148,11 @@ fun AppItemCard(
                                 leadingIcon = { Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode)) },
                                 onClick = {
                                     menuExpanded = false
-                                    onSelectNetworkMode(mode)
+                                    if (mode != NetworkAccessMode.ALL && !isVpnActive) {
+                                        pendingVpnHintMode = mode
+                                    } else {
+                                        onSelectNetworkMode(mode)
+                                    }
                                 }
                             )
                         }
@@ -162,21 +168,18 @@ fun AppItemCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // AUTO BOOT — hanya relevan kalau app punya BOOT_COMPLETED receiver
+                    // AUTO BOOT
                     Button(
                         onClick = onToggleAutoBoot,
-                        enabled = app.hasBootReceiver,
                         modifier = Modifier.height(24.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (app.isAutoBootEnabled) GeometricSuccess else Color.Gray,
-                            contentColor = Color.White,
-                            disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
-                            disabledContentColor = Color.LightGray
+                            contentColor = Color.White
                         ),
                         shape = CircleShape
                     ) {
-                        Text(if (app.hasBootReceiver) "AUTO BOOT" else "NO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("AUTO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // KILL BUTTON
@@ -226,6 +229,29 @@ fun AppItemCard(
         }
     }
 
+    val hintMode = pendingVpnHintMode
+    if (hintMode != null) {
+        AlertDialog(
+            onDismissRequest = { pendingVpnHintMode = null },
+            title = { Text("VPN belum aktif") },
+            text = {
+                Text(
+                    "Mode \"${networkModeLabel(hintMode)}\" untuk ${app.appName} akan tersimpan, " +
+                        "tapi belum berpengaruh ke jaringan sampai Anda menyalakan VPN di layar utama. " +
+                        "Simpan aturan ini sekarang?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onSelectNetworkMode(hintMode)
+                    pendingVpnHintMode = null
+                }) { Text("Simpan") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingVpnHintMode = null }) { Text("Batal") }
+            }
+        )
+    }
 }
 
 private fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {

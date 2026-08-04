@@ -19,8 +19,6 @@ class AppManagerViewModel : ViewModel() {
     private val _state = MutableStateFlow(AppManagerState())
     val state: StateFlow<AppManagerState> = _state.asStateFlow()
 
-    private var hasShownVpnInactiveNotice = false
-
     fun selectTab(tabIndex: Int) {
         _state.value = _state.value.copy(currentTab = tabIndex)
     }
@@ -29,20 +27,18 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(errorMessage = null)
     }
 
-    fun clearNotice() {
-        _state.value = _state.value.copy(notice = null)
-    }
-
     fun loadData(context: Context) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
 
             updateRamInfo(context)
             checkShizukuStatus()
+            refreshVpnStatus(context)
 
             val (user, system) = withContext(Dispatchers.IO) {
                 val pm = context.packageManager
                 val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
+
                 val bulk = ShizukuController.getBulkState()
                 val vpnRules = VpnRulesRepository.getAllRules(context)
 
@@ -55,13 +51,6 @@ class AppManagerViewModel : ViewModel() {
                     val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                     val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
 
-                    val liveBootComponents = bulk.bootReceiverComponents[pkg.packageName]
-                    if (liveBootComponents != null) {
-                        AutoBootRepository.rememberComponents(context, pkg.packageName, liveBootComponents)
-                    }
-                    val hasBootReceiver = liveBootComponents != null ||
-                        AutoBootRepository.hasKnownComponents(context, pkg.packageName)
-
                     val info = AppInfo(
                         appName = name,
                         packageName = pkg.packageName,
@@ -69,8 +58,7 @@ class AppManagerViewModel : ViewModel() {
                         icon = icon,
                         isRunning = bulk.isRunning(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
-                        hasBootReceiver = hasBootReceiver,
-                        isAutoBootEnabled = hasBootReceiver && AutoBootRepository.isAutoBootEnabled(context, pkg.packageName),
+                        isAutoBootEnabled = !bulk.bootIgnoredPackages.contains(pkg.packageName),
                         uid = appInfo.uid,
                         networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL
                     )
@@ -92,35 +80,27 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    fun refreshLiveStatus(context: Context) {
+    fun refreshLiveStatus() {
         if (!ShizukuController.isReady()) return
         viewModelScope.launch(Dispatchers.IO) {
             val bulk = ShizukuController.getBulkState()
             withContext(Dispatchers.Main) {
                 _state.value = _state.value.copy(
-                    userApps = _state.value.userApps.map { it.withLiveStatus(bulk, context) },
-                    systemApps = _state.value.systemApps.map { it.withLiveStatus(bulk, context) }
+                    userApps = _state.value.userApps.map { it.withLiveStatus(bulk) },
+                    systemApps = _state.value.systemApps.map { it.withLiveStatus(bulk) }
                 )
             }
         }
     }
 
-    private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState, context: Context): AppInfo {
+    private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState): AppInfo {
         val newIsRunning = bulk.isRunning(packageName)
         val newIsDataOn = !bulk.bgDataBlockedUids.contains(uid)
-
-        val liveBootComponents = bulk.bootReceiverComponents[packageName]
-        if (liveBootComponents != null) {
-            AutoBootRepository.rememberComponents(context, packageName, liveBootComponents)
-        }
-        val newHasBootReceiver = liveBootComponents != null || AutoBootRepository.hasKnownComponents(context, packageName)
-        val newIsAutoBoot = newHasBootReceiver && AutoBootRepository.isAutoBootEnabled(context, packageName)
-
-        return if (newIsRunning == isRunning && newIsDataOn == isDataOn &&
-            newIsAutoBoot == isAutoBootEnabled && newHasBootReceiver == hasBootReceiver) {
+        val newIsAutoBoot = !bulk.bootIgnoredPackages.contains(packageName)
+        return if (newIsRunning == isRunning && newIsDataOn == isDataOn && newIsAutoBoot == isAutoBootEnabled) {
             this
         } else {
-            copy(isRunning = newIsRunning, isDataOn = newIsDataOn, isAutoBootEnabled = newIsAutoBoot, hasBootReceiver = newHasBootReceiver)
+            copy(isRunning = newIsRunning, isDataOn = newIsDataOn, isAutoBootEnabled = newIsAutoBoot)
         }
     }
 
@@ -141,69 +121,67 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(shizukuStatus = ShizukuController.getStatusText())
     }
 
+    // ---------------------------------------------------------------------
+    // VPN — MASTER SWITCH
+    // ---------------------------------------------------------------------
+
+    /** Status VPN = niat master switch, bukan hasil evaluasi aturan per-app. */
     fun refreshVpnStatus(context: Context) {
-        _state.value = _state.value.copy(isVpnActive = VpnController.isRunning(context))
+        val master = VpnController.isMasterEnabled(context)
+        if (_state.value.isVpnActive != master) {
+            _state.value = _state.value.copy(isVpnActive = master)
+        }
     }
 
     fun getVpnPrepareIntent(context: Context): Intent? = VpnController.prepareIntent(context)
 
+    /** ON: langsung nyala, tanpa menunggu logika lain. */
     fun startVpn(context: Context) {
         _state.value = _state.value.copy(isVpnActive = true)
         VpnController.start(context)
-        viewModelScope.launch {
-            pollVpnStatusUntilStable(context, expected = true)
-        }
     }
 
+    /** OFF: langsung mati, tanpa menunggu logika lain. */
     fun stopVpn(context: Context) {
         _state.value = _state.value.copy(isVpnActive = false)
         VpnController.stop(context)
-        viewModelScope.launch {
-            pollVpnStatusUntilStable(context, expected = false)
-        }
-    }
-
-    private suspend fun pollVpnStatusUntilStable(context: Context, expected: Boolean) {
-        repeat(20) {
-            val actual = withContext(Dispatchers.IO) { VpnController.isRunning(context) }
-            if (_state.value.isVpnActive != actual) {
-                _state.value = _state.value.copy(isVpnActive = actual)
-            }
-            if (actual == expected) return
-            delay(100)
-        }
     }
 
     fun setAppNetworkMode(packageName: String, uid: Int, mode: NetworkAccessMode, context: Context) {
-        val vpnInactiveNow = !_state.value.isVpnActive
         viewModelScope.launch(Dispatchers.IO) {
             VpnRulesRepository.setMode(context, uid, mode)
             withContext(Dispatchers.Main) {
                 updateAppNetworkMode(packageName, mode)
-                if (vpnInactiveNow && mode != NetworkAccessMode.ALL && !hasShownVpnInactiveNotice) {
-                    hasShownVpnInactiveNotice = true
-                    _state.value = _state.value.copy(
-                        notice = "VPN belum aktif. Aturan tersimpan & otomatis berlaku begitu VPN dinyalakan."
-                    )
-                }
             }
         }
     }
 
+    // ---------------------------------------------------------------------
+    // KILL
+    // ---------------------------------------------------------------------
+
     fun forceStopApp(packageName: String, uid: Int, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
-            val ok = ShizukuController.forceStopPackage(packageName, uid)
-            delay(500)
+            val result = ShizukuController.forceStopPackageDetailed(packageName, uid)
+            delay(300)
             val stillRunning = ShizukuController.isPackageRunning(packageName)
 
+            val holders = if (stillRunning && result.keptAliveBy.isEmpty()) {
+                ShizukuController.findKeepAliveHolders(packageName)
+            } else result.keptAliveBy
+
             withContext(Dispatchers.Main) {
-                if (!ok) {
-                    _state.value = _state.value.copy(errorMessage = "Gagal mengeksekusi perintah kill. Pastikan Shizuku aktif.")
-                } else if (stillRunning) {
-                    val reason = ShizukuController.analyzeWhyAppWontKill(packageName)
-                    _state.value = _state.value.copy(errorMessage = reason)
-                } else {
-                    _state.value = _state.value.copy(notice = "Aplikasi berhasil dihentikan.")
+                val message = when {
+                    !stillRunning -> null
+                    holders.isNotEmpty() ->
+                        "Tetap aktif karena ditahan oleh: ${holders.joinToString(", ")}. Hentikan/batasi app tersebut dulu."
+                    !result.commandSucceeded ->
+                        "Gagal menghentikan aplikasi. Pastikan Shizuku aktif & izin diberikan."
+                    else ->
+                        "Aplikasi langsung hidup kembali dan tidak terdeteksi penahannya (kemungkinan dijadwalkan sistem/alarm)."
+                }
+                if (message != null) {
+                    _state.value = _state.value.copy(errorMessage = message)
                 }
                 updateSingleAppRunningState(packageName, stillRunning)
                 updateRamInfo(context)
@@ -214,13 +192,25 @@ class AppManagerViewModel : ViewModel() {
     fun killAllUserApps(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val appsToKill = _state.value.userApps.filter { it.isRunning }
-            var anyFailed = false
+            val survivors = mutableListOf<String>()
+            val holdersAll = linkedSetOf<String>()
+
             appsToKill.forEach { app ->
-                if (!ShizukuController.forceStopPackage(app.packageName, app.uid)) anyFailed = true
+                val result = ShizukuController.forceStopPackageDetailed(app.packageName, app.uid)
+                if (result.stillRunning) {
+                    survivors.add(app.appName)
+                    holdersAll.addAll(result.keptAliveBy)
+                }
             }
+
             withContext(Dispatchers.Main) {
-                if (anyFailed) {
-                    _state.value = _state.value.copy(errorMessage = "Sebagian aplikasi gagal dihentikan.")
+                if (survivors.isNotEmpty()) {
+                    val holderText = if (holdersAll.isNotEmpty()) {
+                        " Ditahan oleh: ${holdersAll.take(5).joinToString(", ")}."
+                    } else ""
+                    _state.value = _state.value.copy(
+                        errorMessage = "Masih aktif: ${survivors.take(5).joinToString(", ")}.$holderText"
+                    )
                 }
                 loadData(context)
             }
@@ -246,28 +236,27 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    fun toggleAutoBoot(packageName: String, currentStatus: Boolean, context: Context) {
+    // ---------------------------------------------------------------------
+    // AUTO-BOOT
+    // ---------------------------------------------------------------------
+
+    fun toggleAutoBoot(packageName: String, currentStatus: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
-            val components = AutoBootRepository.getComponents(context, packageName)
-
-            if (components.isEmpty()) {
-                withContext(Dispatchers.Main) {
-                    _state.value = _state.value.copy(errorMessage = "Tidak ada penerima BOOT_COMPLETED yang terdeteksi.")
-                }
-                return@launch
-            }
-
-            val ok = components.all { component -> ShizukuController.setComponentEnabled(component, newStatus) }
-            if (ok) {
-                AutoBootRepository.setAutoBootEnabled(context, packageName, newStatus)
-            }
+            val (ok, detail) = ShizukuController.setAutoBootEnabled(packageName, newStatus)
 
             withContext(Dispatchers.Main) {
                 if (!ok) {
-                    _state.value = _state.value.copy(errorMessage = "Gagal mengubah pengaturan auto-boot.")
+                    _state.value = _state.value.copy(
+                        errorMessage = "Gagal mengubah auto-boot. $detail"
+                    )
                 } else {
                     updateAppAutoBootState(packageName, newStatus)
+                    if (detail.startsWith("Paksa")) {
+                        _state.value = _state.value.copy(
+                            errorMessage = "Auto-boot ${if (newStatus) "diaktifkan" else "dimatikan"} secara paksa (pm disable-user pada BootReceiver)."
+                        )
+                    }
                 }
             }
         }
