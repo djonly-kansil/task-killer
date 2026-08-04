@@ -12,40 +12,15 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
 import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 
-/**
- * VpnService lokal murni untuk FILTER per-aplikasi -- BUKAN proxy/VPN sungguhan.
- * Tidak ada server jarak jauh, tidak ada enkripsi tambahan, dan tidak ada satu pun
- * paket yang benar-benar diteruskan ke mana pun. Prinsip kerjanya:
- *
- * 1) Hanya aplikasi yang SEDANG HARUS DIBLOKIR (lihat computeCurrentlyBlockedUids())
- *    yang dimasukkan ke interface VPN lewat Builder.addAllowedApplication(). Semua
- *    aplikasi lain TIDAK disentuh sama sekali -- trafiknya tetap lewat jalur normal
- *    sistem, tidak ada overhead dan tidak lewat tunnel ini.
- * 2) Begitu sebuah app "masuk" ke tunnel ini, paketnya dibaca dari file descriptor
- *    TUN lalu SENGAJA DIBUANG (tidak pernah ditulis balik / diteruskan kemana pun).
- *    Efeknya persis seperti firewall DROP: koneksi macet/timeout dari sudut pandang
- *    app tsb -- tanpa perlu parsing header IP/TCP/UDP atau NAT sama sekali.
- * 3) Mode WIFI_ONLY / CELLULAR_ONLY dievaluasi ulang setiap kali transport jaringan
- *    aktif berubah (lewat ConnectivityManager.NetworkCallback). Contoh: app bermode
- *    WIFI_ONLY otomatis masuk daftar blokir begitu HP pindah ke data seluler, dan
- *    otomatis lepas begitu balik ke Wi-Fi -- tanpa user perlu apa-apa.
- * 4) Daftar allowed-application pada Builder tidak bisa diubah di interface yang
- *    sudah berjalan, jadi setiap perubahan (rule baru dari UI lewat reloadRules(),
- *    atau transport berubah) memicu establish() ULANG dengan fd baru; fd lama
- *    ditutup setelah fd baru siap.
- *
- * Kalau tidak ada satu pun app yang perlu diblokir saat ini, interface TIDAK
- * di-establish sama sekali (service tetap hidup di foreground, siap membangun
- * interface kapan pun ada rule baru) -- sesuai catatan di VpnRulesRepository &
- * AppManagerViewModel bahwa VPN filter "aktif" berarti siap menerapkan rule,
- * bukan berarti selalu ada tunnel yang benar-benar terbentuk.
- */
+
 class LocalVpnService : VpnService() {
 
     private var tunFd: ParcelFileDescriptor? = null
@@ -67,35 +42,22 @@ class LocalVpnService : VpnService() {
         var isRunning: Boolean = false
             private set
 
-        /**
-         * REVISI (masalah: switch VPN terlihat ON tapi trafik belum benar-benar
-         * difilter): isRunning di atas cuma berarti "service-nya hidup", BUKAN
-         * berarti ada tunnel yang benar-benar terbentuk -- rebuild() sengaja tidak
-         * memanggil builder.establish() kalau tidak ada satupun app non-ALL (lihat
-         * catatan kelas). Dua konsep ini sebelumnya dicampur jadi satu boolean di
-         * AppManagerViewModel/AppManagerScreen, makanya switch bisa terlihat ON
-         * padahal belum ada yang benar-benar difilter. isTunnelActive di sini
-         * mencerminkan status tunnel yang SEBENARNYA, terpisah dari isRunning,
-         * supaya UI (lewat VpnController, perlu ditambahkan wrapper serupa
-         * isRunning()) bisa menampilkan dua status ini secara jujur/berbeda kalau
-         * diperlukan.
-         */
+        
         @Volatile
         var isTunnelActive: Boolean = false
             private set
 
-        // Referensi service yang sedang berjalan supaya VpnRulesRepository bisa
-        // memicu rebuild tanpa bind/IPC -- aman karena selalu dipakai di proses yang sama.
+
         @Volatile
         private var activeInstance: LocalVpnService? = null
 
-        /**
-         * Dipanggil VpnRulesRepository.setMode() setiap kali user mengganti mode
-         * jaringan satu app. Kalau VPN filter sedang tidak aktif, tidak melakukan
-         * apa-apa (rule tetap tersimpan, baru berlaku begitu VPN dinyalakan).
-         */
+        
         fun reloadRules(context: Context) {
-            activeInstance?.rebuild()
+            activeInstance?.let { service ->
+                Handler(Looper.getMainLooper()).post {
+                    service.rebuild()
+                }
+            }
         }
     }
 
@@ -104,14 +66,7 @@ class LocalVpnService : VpnService() {
         connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     }
 
-    /**
-     * REVISI (masalah: switch VPN nyangkut ON walau sudah di-OFF):
-     * isRunning sekarang di-set false SESEGERA MUNGKIN begitu Intent ACTION_STOP
-     * benar-benar diterima & diproses di sini -- bukan menunggu onDestroy() (yang
-     * baru dipanggil sistem belakangan lewat siklus Service async, bisa telat
-     * dibaca ViewModel). stopSelf() tetap dipanggil untuk memicu teardown asli
-     * (tunFd, network callback, dll) lewat onDestroy() seperti biasa.
-     */
+    
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             running = false
@@ -136,11 +91,7 @@ class LocalVpnService : VpnService() {
         rebuild()
     }
 
-    /**
-     * Bangun ulang interface VPN dari nol berdasarkan rule + transport TERKINI.
-     * Dipanggil saat: VPN baru dinyalakan, rule app berubah (reloadRules), atau
-     * transport jaringan aktif berganti Wi-Fi <-> seluler.
-     */
+    
     @Synchronized
     private fun rebuild() {
         if (!running) return
@@ -159,7 +110,7 @@ class LocalVpnService : VpnService() {
                     builder.addAllowedApplication(pkg)
                     addedAny = true
                 } catch (e: PackageManager.NameNotFoundException) {
-                    // package sempat di-uninstall di antara pembacaan rule & rebuild -- abaikan
+                    
                 }
             }
         }
@@ -168,8 +119,7 @@ class LocalVpnService : VpnService() {
         val oldThread = readerThread
 
         if (!addedAny) {
-            // Tidak ada satu app pun yang perlu diblokir saat ini -- tutup tunnel
-            // sepenuhnya. Service tetap hidup, hanya belum ada interface aktif.
+            
             oldThread?.interrupt()
             oldFd?.closeQuietly()
             tunFd = null
@@ -182,7 +132,17 @@ class LocalVpnService : VpnService() {
             builder.establish()
         } catch (e: Exception) {
             null
-        } ?: return
+        }
+
+        if (newFd == null) {
+            
+            oldThread?.interrupt()
+            oldFd?.closeQuietly()
+            tunFd = null
+            readerThread = null
+            isTunnelActive = false
+            return
+        }
 
         tunFd = newFd
         readerThread = startDropperThread(newFd).also { it.start() }
@@ -192,12 +152,7 @@ class LocalVpnService : VpnService() {
         oldFd?.closeQuietly()
     }
 
-    /**
-     * Kumpulkan uid yang HARUS diblokir saat ini, gabungan dari:
-     * - mode BLOCKED (selalu)
-     * - mode WIFI_ONLY tapi transport aktif sekarang BUKAN Wi-Fi
-     * - mode CELLULAR_ONLY tapi transport aktif sekarang Wi-Fi (bukan seluler)
-     */
+    
     private fun computeCurrentlyBlockedUids(): Set<Int> {
         val rules = VpnRulesRepository.getAllRules(applicationContext)
         val blocked = mutableSetOf<Int>()
@@ -220,12 +175,11 @@ class LocalVpnService : VpnService() {
             try {
                 while (!Thread.currentThread().isInterrupted) {
                     val length = input.read(buffer)
-                    // Sengaja tidak ditulis balik ke output -- paket dibuang di sini,
-                    // ini INTI dari mekanisme block (lihat catatan kelas di atas).
+                    
                     if (length < 0) break
                 }
             } catch (e: IOException) {
-                // fd ditutup saat rebuild/stop -- normal, bukan error
+               
             }
         }
     }
@@ -251,57 +205,30 @@ class LocalVpnService : VpnService() {
     }
 
     override fun onRevoke() {
-        // Dipanggil sistem kalau user mencabut izin VPN lewat menu Settings > VPN
-        // (bukan lewat switch di app ini) -- pastikan status app ikut menyesuaikan
-        // (kartu status akan sinkron sendiri lewat refreshVpnStatus() di onResume).
+        
         stopSelf()
         super.onRevoke()
     }
 
-    /**
-     * FIX (race dengan rebuild()): sebelumnya method ini memodifikasi running/tunFd/
-     * readerThread TANPA lock yang sama dengan rebuild() (yang bertanda @Synchronized,
-     * artinya sinkron pada monitor "this"). rebuild() bisa dipanggil dari THREAD LAIN,
-     * bukan cuma main thread -- entah dari reloadRules() (dipanggil dari
-     * viewModelScope.launch(Dispatchers.IO) di ViewModel), ATAU dari NetworkCallback
-     * (onCapabilitiesChanged berjalan di thread callback ConnectivityManager, BUKAN
-     * main thread, karena registerDefaultNetworkCallback() dipanggil tanpa Handler).
-     *
-     * Skenario race: user matikan switch VPN persis saat rebuild() di thread lain
-     * sedang berjalan (lolos cek "if (!running) return" karena running masih true).
-     * onDestroy() (main thread, TIDAK pakai lock) langsung set activeInstance=null &
-     * tutup tunFd LAMA -- sementara rebuild() di thread lain lanjut sampai
-     * builder.establish() SUKSES membuat tunnel BARU dan menyimpannya ke tunFd
-     * SETELAH onDestroy() selesai. Tunnel baru ini jadi "yatim": activeInstance sudah
-     * null jadi tidak ada yang bisa memicu penutupannya lagi -- makanya switch di UI
-     * sudah OFF, tapi tunnel VPN sungguhan tetap hidup sampai proses app dipaksa mati.
-     *
-     * Fix: bungkus SEMUA mutasi state di sini dengan monitor yang SAMA dengan
-     * rebuild() (synchronized(this)), supaya keduanya tidak pernah tumpang tindih --
-     * kalau rebuild() sedang jalan, onDestroy() menunggu sampai selesai (lalu langsung
-     * override hasilnya karena "running" sudah false di awal blok), atau sebaliknya.
-     */
     override fun onDestroy() {
-        synchronized(this) {
-            running = false
-            isRunning = false
-            isTunnelActive = false
-            activeInstance = null
+        running = false
+        isRunning = false
+        isTunnelActive = false
+        activeInstance = null
 
-            networkCallback?.let {
-                try {
-                    connectivityManager.unregisterNetworkCallback(it)
-                } catch (e: IllegalArgumentException) {
-                    // sudah ter-unregister -- abaikan
-                }
+        networkCallback?.let {
+            try {
+                connectivityManager.unregisterNetworkCallback(it)
+            } catch (e: IllegalArgumentException) {
+             
             }
-            networkCallback = null
-
-            readerThread?.interrupt()
-            readerThread = null
-            tunFd?.closeQuietly()
-            tunFd = null
         }
+        networkCallback = null
+
+        readerThread?.interrupt()
+        readerThread = null
+        tunFd?.closeQuietly()
+        tunFd = null
 
         super.onDestroy()
     }
@@ -310,7 +237,7 @@ class LocalVpnService : VpnService() {
         try {
             close()
         } catch (e: IOException) {
-            // abaikan
+            
         }
     }
 
