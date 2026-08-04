@@ -27,6 +27,13 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(errorMessage = null)
     }
 
+    fun clearNotice() {
+        _state.value = _state.value.copy(notice = null)
+    }
+
+    
+    private var hasShownVpnInactiveNotice = false
+
     fun loadData(context: Context) {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = true)
@@ -38,13 +45,9 @@ class AppManagerViewModel : ViewModel() {
                 val pm = context.packageManager
                 val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
 
-                // REVISI (masalah 1): satu kali panggilan shell untuk SEMUA data,
-                // bukan satu panggilan per aplikasi seperti sebelumnya.
                 val bulk = ShizukuController.getBulkState()
 
-                // Rules mode akses jaringan (ALL/WIFI_ONLY/CELLULAR_ONLY/BLOCKED) per uid,
-                // disimpan & dibaca lewat VpnRulesRepository -- terpisah dari bulk di atas
-                // karena ini murni state milik app sendiri, bukan dibaca dari sistem.
+                
                 val vpnRules = VpnRulesRepository.getAllRules(context)
 
                 val userApps = mutableListOf<AppInfo>()
@@ -56,6 +59,14 @@ class AppManagerViewModel : ViewModel() {
                     val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                     val icon = try { pm.getApplicationIcon(appInfo) } catch (e: Exception) { null }
 
+                    
+                    val liveBootComponents = bulk.bootReceiverComponents[pkg.packageName]
+                    if (liveBootComponents != null) {
+                        AutoBootRepository.rememberComponents(context, pkg.packageName, liveBootComponents)
+                    }
+                    val hasBootReceiver = liveBootComponents != null ||
+                        AutoBootRepository.hasKnownComponents(context, pkg.packageName)
+
                     val info = AppInfo(
                         appName = name,
                         packageName = pkg.packageName,
@@ -63,7 +74,8 @@ class AppManagerViewModel : ViewModel() {
                         icon = icon,
                         isRunning = bulk.isRunning(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
-                        isAutoBootEnabled = !bulk.bootIgnoredPackages.contains(pkg.packageName),
+                        hasBootReceiver = hasBootReceiver,
+                        isAutoBootEnabled = hasBootReceiver && AutoBootRepository.isAutoBootEnabled(context, pkg.packageName),
                         uid = appInfo.uid,
                         networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL
                     )
@@ -85,42 +97,36 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * REVISI (masalah 3 - tidak auto-refresh):
-     * Refresh RINGAN yang hanya memperbarui status yang bisa berubah dari luar
-     * (proses berjalan, status background-data, auto-boot), tanpa query ulang
-     * PackageManager (icon/label) yang lebih berat. Dipanggil dari onResume()
-     * MainActivity, jadi begitu Anda kembali ke app ini -- misalnya setelah
-     * mengubah data seluler dari Pengaturan HP atau menutup aplikasi lain lewat
-     * recent apps -- datanya sudah ikut menyesuaikan tanpa perlu tutup-buka app
-     * ini secara manual.
-     *
-     * Item yang statusnya TIDAK berubah dikembalikan sebagai objek AppInfo yang
-     * SAMA (bukan copy baru), supaya LazyColumn di AppListContent (yang pakai
-     * key = packageName) hanya me-recompose baris yang benar-benar berubah --
-     * bukan reload seluruh daftar.
-     */
-    fun refreshLiveStatus() {
+    
+    fun refreshLiveStatus(context: Context) {
         if (!ShizukuController.isReady()) return
         viewModelScope.launch(Dispatchers.IO) {
             val bulk = ShizukuController.getBulkState()
             withContext(Dispatchers.Main) {
                 _state.value = _state.value.copy(
-                    userApps = _state.value.userApps.map { it.withLiveStatus(bulk) },
-                    systemApps = _state.value.systemApps.map { it.withLiveStatus(bulk) }
+                    userApps = _state.value.userApps.map { it.withLiveStatus(bulk, context) },
+                    systemApps = _state.value.systemApps.map { it.withLiveStatus(bulk, context) }
                 )
             }
         }
     }
 
-    private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState): AppInfo {
+    private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState, context: Context): AppInfo {
         val newIsRunning = bulk.isRunning(packageName)
         val newIsDataOn = !bulk.bgDataBlockedUids.contains(uid)
-        val newIsAutoBoot = !bulk.bootIgnoredPackages.contains(packageName)
-        return if (newIsRunning == isRunning && newIsDataOn == isDataOn && newIsAutoBoot == isAutoBootEnabled) {
+
+        val liveBootComponents = bulk.bootReceiverComponents[packageName]
+        if (liveBootComponents != null) {
+            AutoBootRepository.rememberComponents(context, packageName, liveBootComponents)
+        }
+        val newHasBootReceiver = liveBootComponents != null || AutoBootRepository.hasKnownComponents(context, packageName)
+        val newIsAutoBoot = newHasBootReceiver && AutoBootRepository.isAutoBootEnabled(context, packageName)
+
+        return if (newIsRunning == isRunning && newIsDataOn == isDataOn &&
+            newIsAutoBoot == isAutoBootEnabled && newHasBootReceiver == hasBootReceiver) {
             this
         } else {
-            copy(isRunning = newIsRunning, isDataOn = newIsDataOn, isAutoBootEnabled = newIsAutoBoot)
+            copy(isRunning = newIsRunning, isDataOn = newIsDataOn, isAutoBootEnabled = newIsAutoBoot, hasBootReceiver = newHasBootReceiver)
         }
     }
 
@@ -141,40 +147,16 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(shizukuStatus = ShizukuController.getStatusText())
     }
 
-    /**
-     * Dipanggil dari MainActivity.onResume() supaya kartu status VPN di layar ikut
-     * menyesuaikan kalau service sempat dihentikan sistem/user dari luar app.
-     */
+    
     fun refreshVpnStatus(context: Context) {
         _state.value = _state.value.copy(isVpnActive = VpnController.isRunning(context))
     }
 
-    /**
-     * Bungkus VpnService.prepare() lewat VpnController. Return null artinya izin
-     * sudah pernah diberikan sebelumnya -- pemanggil (AppManagerScreen) bisa langsung
-     * startVpn() tanpa perlu menampilkan dialog consent sistem lagi. Kalau non-null,
-     * Intent ini WAJIB dijalankan lewat ActivityResultLauncher (bukan startActivity biasa).
-     */
+    
+    
     fun getVpnPrepareIntent(context: Context): Intent? = VpnController.prepareIntent(context)
 
-    /**
-     * REVISI (masalah: switch VPN "nyangkut" tidak bisa OFF, khususnya saat ada
-     * app dengan mode non-ALL):
-     * Sebelumnya, setelah VpnController.stop()/start() (yang cuma mengirim Intent
-     * ACTION_STOP/START lewat context.startService() -- proses ASYNC lewat
-     * ActivityManagerService, bukan langsung selesai saat pemanggilan return),
-     * kode langsung memanggil refreshVpnStatus() SEKALI di baris berikutnya. Intent
-     * itu belum tentu sudah diproses LocalVpnService (onStartCommand/onDestroy
-     * berjalan belakangan lewat message queue), jadi flag LocalVpnService.isRunning
-     * yang dibaca sering kali masih nilai LAMA -- switch pun terlihat "diam"/stuck
-     * karena state di UI dianggap tidak berubah (true->true), padahal sebenarnya
-     * command-nya sudah terkirim dan akan diproses sesaat lagi.
-     *
-     * Sekarang, setelah mengirim command, statusnya di-poll ulang berkala (tiap
-     * 100ms, maksimal ~2 detik) sampai benar-benar mencerminkan status service yang
-     * sesungguhnya -- switch akan otomatis menyesuaikan begitu LocalVpnService
-     * benar-benar selesai berhenti/menyala, tanpa perlu keluar-masuk app manual.
-     */
+      
     fun startVpn(context: Context) {
         VpnController.start(context)
         viewModelScope.launch {
@@ -200,30 +182,24 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Ganti mode akses jaringan satu aplikasi (ALL/WIFI_ONLY/CELLULAR_ONLY/BLOCKED).
-     * Rule ditulis ke VpnRulesRepository (persisten) dan langsung dibaca oleh
-     * LocalVpnService kalau VPN filter sedang aktif -- tidak butuh restart VPN.
-     * Kalau VPN belum aktif, rule tetap tersimpan tapi baru berlaku nyata begitu
-     * pengguna menyalakan VPN (UI sebaiknya kasih tahu ini, lihat isVpnActive).
-     */
+    
     fun setAppNetworkMode(packageName: String, uid: Int, mode: NetworkAccessMode, context: Context) {
+        val vpnInactiveNow = !_state.value.isVpnActive
         viewModelScope.launch(Dispatchers.IO) {
             VpnRulesRepository.setMode(context, uid, mode)
             withContext(Dispatchers.Main) {
                 updateAppNetworkMode(packageName, mode)
+                if (vpnInactiveNow && mode != NetworkAccessMode.ALL && !hasShownVpnInactiveNotice) {
+                    hasShownVpnInactiveNotice = true
+                    _state.value = _state.value.copy(
+                        notice = "VPN belum aktif. Aturan tersimpan & akan otomatis berlaku begitu VPN dinyalakan."
+                    )
+                }
             }
         }
     }
 
-    /**
-     * REVISI (masalah 4 - kill belum powerfull):
-     * uid sekarang dikirim (dipakai untuk kill-uid yang benar). Setelah perintah
-     * kill dikirim, app CEK ULANG status proses yang SEBENARNYA (bukan langsung
-     * asumsi berhasil) -- jadi kalau aplikasi itu aktif lagi sendiri, tombol KILL
-     * otomatis kembali aktif (merah) tanpa Anda harus reload manual, dan Anda
-     * langsung tahu lewat pesan bahwa aplikasi itu hidup lagi sendiri.
-     */
+    
     fun forceStopApp(packageName: String, uid: Int, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val ok = ShizukuController.forceStopPackage(packageName, uid)
@@ -258,34 +234,7 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * REVISI (masalah 2 - tombol data salah/tidak konsisten):
-     * Sebelumnya status "isDataOn" dibaca dari appop RUN_IN_BACKGROUND, yang
-     * sebenarnya kontrol untuk boleh-tidaknya proses berjalan di LATAR BELAKANG
-     * secara umum -- BUKAN kontrol akses jaringan. Perintah mematikannya juga
-     * memakai "cmd netpolicy add firewall-chain-rule ..." yang bukan subcommand
-     * netpolicy yang valid, sehingga selalu gagal saat mematikan (makanya tombol
-     * terasa "tidak bisa ditekan" saat hijau/ON -- sebenarnya bisa ditekan, tapi
-     * errornya diam-diam), sementara saat dihidupkan lagi perintahnya "berhasil"
-     * tapi memang dari awal tidak pernah benar-benar memblokir apa pun (makanya
-     * status merah terasa tidak berpengaruh nyata ke jaringan).
-     *
-     * Sekarang dipakai mekanisme resmi Android untuk membatasi DATA SELULER LATAR
-     * BELAKANG per aplikasi (cmd netpolicy add/remove restrict-background-blacklist),
-     * yang statusnya dibaca ulang secara konsisten lewat dumpsys netpolicy di
-     * getBulkState() -- jadi apa yang di-set dan yang dibaca sekarang sinkron.
-     *
-     * CATATAN PENTING: Android stock (tanpa root) tidak menyediakan command publik
-     * untuk memblokir total Wi-Fi & data seluler sekaligus termasuk saat aplikasi
-     * dibuka di foreground. Toggle terpisah "Wi-Fi" / "Data seluler" yang kadang
-     * muncul di beberapa HP (mis. sebagian custom ROM) adalah fitur eksklusif OEM
-     * yang commandnya tidak didokumentasikan dan berbeda-beda per merek, sehingga
-     * tidak bisa ditiru 1:1 lewat Shizuku di semua device. Kalau Anda perlu blokir
-     * total (foreground+background, Wi-Fi vs seluler terpisah) yang konsisten di
-     * semua device, jalur yang reliable adalah VpnService lokal (seperti NetGuard),
-     * bukan lewat netpolicy/appops -- ini perubahan arsitektur yang lebih besar,
-     * beri tahu saya kalau ingin saya bantu rancang.
-     */
+    
     fun toggleDataNetwork(packageName: String, uid: Int, currentStatus: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
@@ -305,11 +254,23 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
-    fun toggleAutoBoot(packageName: String, currentStatus: Boolean) {
+    
+    fun toggleAutoBoot(packageName: String, currentStatus: Boolean, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             val newStatus = !currentStatus
-            val mode = if (newStatus) "allow" else "ignore"
-            val ok = ShizukuController.execute("cmd appops set $packageName BOOT_COMPLETED $mode")
+            val components = AutoBootRepository.getComponents(context, packageName)
+
+            if (components.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(errorMessage = "Tidak ada penerima BOOT_COMPLETED yang terdeteksi untuk aplikasi ini.")
+                }
+                return@launch
+            }
+
+            val ok = components.all { component -> ShizukuController.setComponentEnabled(component, newStatus) }
+            if (ok) {
+                AutoBootRepository.setAutoBootEnabled(context, packageName, newStatus)
+            }
 
             withContext(Dispatchers.Main) {
                 if (!ok) {

@@ -42,12 +42,7 @@ fun AppListContent(
     apps: List<AppInfo>,
     viewModel: AppManagerViewModel,
     context: Context,
-    // REVISI (masalah: tidak ada peringatan "aktifkan VPN dulu" saat ganti mode
-    // data): dulu dropdown mode jaringan langsung memanggil setAppNetworkMode()
-    // tanpa cek apakah VPN filter sedang menyala -- padahal mode selain ALL baru
-    // benar-benar berlaku begitu VPN aktif. Parameter ini WAJIB diisi pemanggil
-    // (AppManagerScreen) dengan state.isVpnActive, supaya AppItemCard bisa
-    // menampilkan hint sebelum menerapkan mode non-ALL saat VPN masih mati.
+    
     isVpnActive: Boolean
 ) {
     LazyColumn(
@@ -61,7 +56,7 @@ fun AppListContent(
                 isVpnActive = isVpnActive,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
                 onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
-                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
+                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled, context) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:${app.packageName}")
@@ -84,12 +79,6 @@ fun AppItemCard(
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
-    // REVISI: dulu setiap DropdownMenuItem langsung memanggil onSelectNetworkMode()
-    // tanpa cek status VPN. Sekarang, kalau user memilih mode selain ALL saat VPN
-    // belum aktif, tampilkan dialog hint dulu -- rule tetap bisa disimpan (sesuai
-    // desain: rule persisten & baru berlaku begitu VPN dinyalakan), tapi user jadi
-    // sadar dulu bahwa itu belum langsung berpengaruh ke jaringan.
-    var pendingVpnHintMode by remember { mutableStateOf<NetworkAccessMode?>(null) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -120,10 +109,7 @@ fun AppItemCard(
                 Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
-            // Chip mode jaringan: ALL / WIFI_ONLY / CELLULAR_ONLY / BLOCKED.
-            // Menggantikan toggle ON/OFF lama -- sekarang tap membuka dropdown 4 pilihan.
-            // REVISI (kontrol data granular): mode selain ALL baru benar-benar berlaku
-            // (termasuk saat app dibuka di foreground) kalau VPN filter sedang aktif.
+            
             var menuExpanded by remember { mutableStateOf(false) }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -160,11 +146,7 @@ fun AppItemCard(
                                 leadingIcon = { Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode)) },
                                 onClick = {
                                     menuExpanded = false
-                                    if (mode != NetworkAccessMode.ALL && !isVpnActive) {
-                                        pendingVpnHintMode = mode
-                                    } else {
-                                        onSelectNetworkMode(mode)
-                                    }
+                                    onSelectNetworkMode(mode)
                                 }
                             )
                         }
@@ -180,18 +162,21 @@ fun AppItemCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // AUTO BOOT
+                    // AUTO BOOT — hanya relevan kalau app punya BOOT_COMPLETED receiver
                     Button(
                         onClick = onToggleAutoBoot,
+                        enabled = app.hasBootReceiver,
                         modifier = Modifier.height(24.dp),
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (app.isAutoBootEnabled) GeometricSuccess else Color.Gray,
-                            contentColor = Color.White
+                            contentColor = Color.White,
+                            disabledContainerColor = Color.Gray.copy(alpha = 0.3f),
+                            disabledContentColor = Color.LightGray
                         ),
                         shape = CircleShape
                     ) {
-                        Text("AUTO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text(if (app.hasBootReceiver) "AUTO BOOT" else "NO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // KILL BUTTON
@@ -241,29 +226,6 @@ fun AppItemCard(
         }
     }
 
-    val hintMode = pendingVpnHintMode
-    if (hintMode != null) {
-        AlertDialog(
-            onDismissRequest = { pendingVpnHintMode = null },
-            title = { Text("VPN belum aktif") },
-            text = {
-                Text(
-                    "Mode \"${networkModeLabel(hintMode)}\" untuk ${app.appName} akan tersimpan, " +
-                        "tapi belum berpengaruh ke jaringan sampai Anda menyalakan VPN di layar utama. " +
-                        "Simpan aturan ini sekarang?"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    onSelectNetworkMode(hintMode)
-                    pendingVpnHintMode = null
-                }) { Text("Simpan") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingVpnHintMode = null }) { Text("Batal") }
-            }
-        )
-    }
 }
 
 private fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {
@@ -273,10 +235,7 @@ private fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {
     NetworkAccessMode.BLOCKED -> "BLOKIR"
 }
 
-// CATATAN: WIFI_ONLY & CELLULAR_ONLY sementara pakai warna MaterialTheme bawaan
-// (tertiary/secondary) karena Color.kt belum tersedia untuk direview -- kalau nanti
-// diupload, dua warna ini bisa diselaraskan dengan aksen custom yang sudah ada
-// (GeometricSuccess/GeometricError).
+
 @Composable
 private fun networkModeColor(mode: NetworkAccessMode): Color = when (mode) {
     NetworkAccessMode.ALL -> GeometricSuccess

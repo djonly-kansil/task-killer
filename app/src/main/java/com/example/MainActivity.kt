@@ -27,9 +27,7 @@ class MainActivity : ComponentActivity() {
         runOnUiThread { viewModel.checkShizukuStatus() }
     }
 
-    // REVISI: sebelumnya requestPermission() dipanggil tapi tidak ada listener
-    // hasilnya sama sekali, jadi UI tidak refresh otomatis setelah user
-    // menyetujui/menolak dialog izin Shizuku.
+     
     private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
         if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
             runOnUiThread {
@@ -67,15 +65,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         viewModel.updateRamInfo(this)
         viewModel.checkShizukuStatus()
-        // REVISI (masalah 3): begitu kembali ke app ini -- misalnya setelah
-        // mengubah pengaturan data seluler dari Pengaturan HP, atau menutup
-        // aplikasi lain lewat recent apps -- status yang bisa berubah dari luar
-        // langsung disegarkan otomatis, tanpa perlu tutup-buka app ini manual.
-        viewModel.refreshLiveStatus()
+        
+        viewModel.refreshLiveStatus(this)
 
-        // Status VPN filter juga disegarkan di sini -- misalnya kalau service
-        // sempat dimatikan sistem (low memory) atau dicabut user lewat menu
-        // "VPN" bawaan Settings, kartu status VPN di layar ikut menyesuaikan.
+        
         viewModel.refreshVpnStatus(this)
     }
 

@@ -38,15 +38,10 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // REVISI (masalah: switch VPN terlihat ON tapi belum benar-benar memfilter):
-    // state.isVpnActive cuma berarti "service hidup" (dipakai buat switch ON/OFF).
-    // isTunnelActive di sini status TUNNEL yang sebenarnya (baca dari
-    // VpnController.isTunnelActive, di-poll bareng RAM di bawah), dipakai khusus
-    // untuk teks status di kartu VPN Filter supaya tidak menyesatkan.
+   
     var isTunnelActive by remember { mutableStateOf(false) }
 
-    // Dialog consent sistem VpnService.prepare() -- WAJIB dijalankan lewat
-    // ActivityResultLauncher, tidak bisa startActivity biasa.
+   
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -68,8 +63,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
         }
     }
 
-    // Auto-update RAM setiap 1000 ms (1 detik) -- sekalian polling status tunnel
-    // VPN yang sebenarnya (lihat komentar isTunnelActive di atas).
+   
     LaunchedEffect(Unit) {
         while (true) {
             viewModel.updateRamInfo(context)
@@ -78,12 +72,19 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
         }
     }
 
-    // REVISI: sebelumnya kegagalan command Shizuku hanya di-printStackTrace,
-    // user tidak pernah tahu kenapa aksi (kill/toggle/uninstall) tidak berefek.
+    
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
             viewModel.clearError()
+        }
+    }
+
+    
+    LaunchedEffect(state.notice) {
+        state.notice?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.clearNotice()
         }
     }
 
@@ -145,8 +146,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // VPN Filter Status Card -- mode Wi-Fi-only/Cellular-only/Blocked di daftar
-            // aplikasi cuma benar-benar berlaku kalau VPN filter ini aktif.
+            
             Card(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -261,11 +261,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 }
             }
 
-            // Body Apps List
-            // REVISI (fitur baru - reload manual, seperti reload tab di browser):
-            // swipe ke bawah pada daftar memicu viewModel.loadData(context), reload
-            // penuh (daftar app + rule + status). Indikator refresh mengikuti
-            // state.isLoading yang sudah ada -- tidak perlu state tambahan.
+            
             PullToRefreshBox(
                 isRefreshing = state.isLoading,
                 onRefresh = { viewModel.loadData(context) },
