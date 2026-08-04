@@ -2,6 +2,7 @@ package com.example
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
@@ -41,6 +42,11 @@ class AppManagerViewModel : ViewModel() {
                 // bukan satu panggilan per aplikasi seperti sebelumnya.
                 val bulk = ShizukuController.getBulkState()
 
+                // Rules mode akses jaringan (ALL/WIFI_ONLY/CELLULAR_ONLY/BLOCKED) per uid,
+                // disimpan & dibaca lewat VpnRulesRepository -- terpisah dari bulk di atas
+                // karena ini murni state milik app sendiri, bukan dibaca dari sistem.
+                val vpnRules = VpnRulesRepository.getAllRules(context)
+
                 val userApps = mutableListOf<AppInfo>()
                 val systemApps = mutableListOf<AppInfo>()
 
@@ -58,7 +64,8 @@ class AppManagerViewModel : ViewModel() {
                         isRunning = bulk.runningPackages.contains(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
                         isAutoBootEnabled = !bulk.bootIgnoredPackages.contains(pkg.packageName),
-                        uid = appInfo.uid
+                        uid = appInfo.uid,
+                        networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL
                     )
 
                     if (isSystem) systemApps.add(info) else userApps.add(info)
@@ -132,6 +139,48 @@ class AppManagerViewModel : ViewModel() {
 
     fun checkShizukuStatus() {
         _state.value = _state.value.copy(shizukuStatus = ShizukuController.getStatusText())
+    }
+
+    /**
+     * Dipanggil dari MainActivity.onResume() supaya kartu status VPN di layar ikut
+     * menyesuaikan kalau service sempat dihentikan sistem/user dari luar app.
+     */
+    fun refreshVpnStatus(context: Context) {
+        _state.value = _state.value.copy(isVpnActive = VpnController.isRunning(context))
+    }
+
+    /**
+     * Bungkus VpnService.prepare() lewat VpnController. Return null artinya izin
+     * sudah pernah diberikan sebelumnya -- pemanggil (AppManagerScreen) bisa langsung
+     * startVpn() tanpa perlu menampilkan dialog consent sistem lagi. Kalau non-null,
+     * Intent ini WAJIB dijalankan lewat ActivityResultLauncher (bukan startActivity biasa).
+     */
+    fun getVpnPrepareIntent(context: Context): Intent? = VpnController.prepareIntent(context)
+
+    fun startVpn(context: Context) {
+        VpnController.start(context)
+        refreshVpnStatus(context)
+    }
+
+    fun stopVpn(context: Context) {
+        VpnController.stop(context)
+        refreshVpnStatus(context)
+    }
+
+    /**
+     * Ganti mode akses jaringan satu aplikasi (ALL/WIFI_ONLY/CELLULAR_ONLY/BLOCKED).
+     * Rule ditulis ke VpnRulesRepository (persisten) dan langsung dibaca oleh
+     * LocalVpnService kalau VPN filter sedang aktif -- tidak butuh restart VPN.
+     * Kalau VPN belum aktif, rule tetap tersimpan tapi baru berlaku nyata begitu
+     * pengguna menyalakan VPN (UI sebaiknya kasih tahu ini, lihat isVpnActive).
+     */
+    fun setAppNetworkMode(packageName: String, uid: Int, mode: NetworkAccessMode, context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            VpnRulesRepository.setMode(context, uid, mode)
+            withContext(Dispatchers.Main) {
+                updateAppNetworkMode(packageName, mode)
+            }
+        }
     }
 
     /**
@@ -269,6 +318,13 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(
             userApps = _state.value.userApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it },
             systemApps = _state.value.systemApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it }
+        )
+    }
+
+    private fun updateAppNetworkMode(packageName: String, mode: NetworkAccessMode) {
+        _state.value = _state.value.copy(
+            userApps = _state.value.userApps.map { if (it.packageName == packageName) it.copy(networkAccessMode = mode) else it },
+            systemApps = _state.value.systemApps.map { if (it.packageName == packageName) it.copy(networkAccessMode = mode) else it }
         )
     }
 }

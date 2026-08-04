@@ -1,8 +1,11 @@
 package com.example
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +35,29 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Dialog consent sistem VpnService.prepare() -- WAJIB dijalankan lewat
+    // ActivityResultLauncher, tidak bisa startActivity biasa.
+    val vpnPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.startVpn(context)
+        }
+    }
+
+    fun onToggleVpn() {
+        if (state.isVpnActive) {
+            viewModel.stopVpn(context)
+        } else {
+            val prepareIntent = viewModel.getVpnPrepareIntent(context)
+            if (prepareIntent != null) {
+                vpnPermissionLauncher.launch(prepareIntent)
+            } else {
+                viewModel.startVpn(context)
+            }
+        }
+    }
 
     // Auto-update RAM setiap 1000 ms (1 detik)
     LaunchedEffect(Unit) {
@@ -104,6 +131,46 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
                 ) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+                }
+            }
+
+            // VPN Filter Status Card -- mode Wi-Fi-only/Cellular-only/Blocked di daftar
+            // aplikasi cuma benar-benar berlaku kalau VPN filter ini aktif.
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = if (state.isVpnActive) GeometricSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("VPN FILTER", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                        }
+                        Text(
+                            text = if (state.isVpnActive) "Aktif — mode Wi-Fi/Seluler/Blokir berlaku" else "Nonaktif — mode selain ALL belum berlaku",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Switch(
+                        checked = state.isVpnActive,
+                        onCheckedChange = { onToggleVpn() },
+                        colors = SwitchDefaults.colors(checkedTrackColor = GeometricSuccess)
+                    )
                 }
             }
 

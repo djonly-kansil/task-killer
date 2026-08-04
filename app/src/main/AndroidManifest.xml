@@ -9,6 +9,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- BARU: dibutuhkan LocalVpnService -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -37,6 +43,25 @@
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+
+        <!-- BARU: service filter jaringan lokal. permission BIND_VPN_SERVICE memastikan
+             hanya sistem yang bisa bind ke service ini meski exported="true" (ini pola
+             standar semua VpnService, bukan celah keamanan).
+             foregroundServiceType="specialUse" WAJIB karena targetSdk 36 -- tidak ada
+             tipe foreground service bawaan (camera/location/dll) yang cocok untuk
+             filter jaringan lokal seperti ini, jadi dipakai kategori "specialUse". -->
+        <service
+            android:name=".LocalVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local-network-filter" />
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

@@ -14,9 +14,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +52,7 @@ fun AppListContent(
             AppItemCard(
                 app = app,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
-                onToggleData = { viewModel.toggleDataNetwork(app.packageName, app.uid, app.isDataOn) },
+                onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
                 onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -63,7 +70,7 @@ fun AppListContent(
 fun AppItemCard(
     app: AppInfo,
     onForceStop: () -> Unit,
-    onToggleData: () -> Unit,
+    onSelectNetworkMode: (NetworkAccessMode) -> Unit,
     onToggleAutoBoot: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit
@@ -98,35 +105,51 @@ fun AppItemCard(
                 Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
-            // Tombol DATA ON/OFF (Ukurannya ringkas 28dp)
+            // Chip mode jaringan: ALL / WIFI_ONLY / CELLULAR_ONLY / BLOCKED.
+            // Menggantikan toggle ON/OFF lama -- sekarang tap membuka dropdown 4 pilihan.
+            // REVISI (kontrol data granular): mode selain ALL baru benar-benar berlaku
+            // (termasuk saat app dibuka di foreground) kalau VPN filter sedang aktif.
+            var menuExpanded by remember { mutableStateOf(false) }
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 2.dp)
             ) {
                 Text(
-                    text = if (app.isDataOn) "DATA ON" else "DATA OFF",
+                    text = networkModeLabel(app.networkAccessMode),
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,
-                    // REVISI: sebelumnya Color.White/Color.Gray hardcoded, bisa tidak
-                    // kontras kalau containerColor Card terang (light theme). Dipakai
-                    // warna aksen yang sama dengan tombol toggle di bawahnya.
-                    color = if (app.isDataOn) GeometricSuccess else GeometricError
+                    color = networkModeColor(app.networkAccessMode)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
 
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(if (app.isDataOn) GeometricSuccess else GeometricError, CircleShape)
-                        .clickable { onToggleData() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = "Data Toggle",
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(networkModeColor(app.networkAccessMode), CircleShape)
+                            .clickable { menuExpanded = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = networkModeIcon(app.networkAccessMode),
+                            contentDescription = "Mode Jaringan",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        NetworkAccessMode.values().forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(networkModeLabel(mode), fontWeight = if (mode == app.networkAccessMode) FontWeight.Bold else FontWeight.Normal) },
+                                leadingIcon = { Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSelectNetworkMode(mode)
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -198,4 +221,30 @@ fun AppItemCard(
             }
         }
     }
+}
+
+private fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {
+    NetworkAccessMode.ALL -> "ALL"
+    NetworkAccessMode.WIFI_ONLY -> "WIFI"
+    NetworkAccessMode.CELLULAR_ONLY -> "SELULER"
+    NetworkAccessMode.BLOCKED -> "BLOKIR"
+}
+
+// CATATAN: WIFI_ONLY & CELLULAR_ONLY sementara pakai warna MaterialTheme bawaan
+// (tertiary/secondary) karena Color.kt belum tersedia untuk direview -- kalau nanti
+// diupload, dua warna ini bisa diselaraskan dengan aksen custom yang sudah ada
+// (GeometricSuccess/GeometricError).
+@Composable
+private fun networkModeColor(mode: NetworkAccessMode): Color = when (mode) {
+    NetworkAccessMode.ALL -> GeometricSuccess
+    NetworkAccessMode.WIFI_ONLY -> MaterialTheme.colorScheme.tertiary
+    NetworkAccessMode.CELLULAR_ONLY -> MaterialTheme.colorScheme.secondary
+    NetworkAccessMode.BLOCKED -> GeometricError
+}
+
+private fun networkModeIcon(mode: NetworkAccessMode) = when (mode) {
+    NetworkAccessMode.ALL -> Icons.Default.Public
+    NetworkAccessMode.WIFI_ONLY -> Icons.Default.Wifi
+    NetworkAccessMode.CELLULAR_ONLY -> Icons.Default.SignalCellularAlt
+    NetworkAccessMode.BLOCKED -> Icons.Default.Block
 }

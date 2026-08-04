@@ -72,6 +72,11 @@ class MainActivity : ComponentActivity() {
         // aplikasi lain lewat recent apps -- status yang bisa berubah dari luar
         // langsung disegarkan otomatis, tanpa perlu tutup-buka app ini manual.
         viewModel.refreshLiveStatus()
+
+        // Status VPN filter juga disegarkan di sini -- misalnya kalau service
+        // sempat dimatikan sistem (low memory) atau dicabut user lewat menu
+        // "VPN" bawaan Settings, kartu status VPN di layar ikut menyesuaikan.
+        viewModel.refreshVpnStatus(this)
     }
 
     private fun checkShizukuPermission() {
