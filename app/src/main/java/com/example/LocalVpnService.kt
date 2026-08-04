@@ -258,25 +258,50 @@ class LocalVpnService : VpnService() {
         super.onRevoke()
     }
 
+    /**
+     * FIX (race dengan rebuild()): sebelumnya method ini memodifikasi running/tunFd/
+     * readerThread TANPA lock yang sama dengan rebuild() (yang bertanda @Synchronized,
+     * artinya sinkron pada monitor "this"). rebuild() bisa dipanggil dari THREAD LAIN,
+     * bukan cuma main thread -- entah dari reloadRules() (dipanggil dari
+     * viewModelScope.launch(Dispatchers.IO) di ViewModel), ATAU dari NetworkCallback
+     * (onCapabilitiesChanged berjalan di thread callback ConnectivityManager, BUKAN
+     * main thread, karena registerDefaultNetworkCallback() dipanggil tanpa Handler).
+     *
+     * Skenario race: user matikan switch VPN persis saat rebuild() di thread lain
+     * sedang berjalan (lolos cek "if (!running) return" karena running masih true).
+     * onDestroy() (main thread, TIDAK pakai lock) langsung set activeInstance=null &
+     * tutup tunFd LAMA -- sementara rebuild() di thread lain lanjut sampai
+     * builder.establish() SUKSES membuat tunnel BARU dan menyimpannya ke tunFd
+     * SETELAH onDestroy() selesai. Tunnel baru ini jadi "yatim": activeInstance sudah
+     * null jadi tidak ada yang bisa memicu penutupannya lagi -- makanya switch di UI
+     * sudah OFF, tapi tunnel VPN sungguhan tetap hidup sampai proses app dipaksa mati.
+     *
+     * Fix: bungkus SEMUA mutasi state di sini dengan monitor yang SAMA dengan
+     * rebuild() (synchronized(this)), supaya keduanya tidak pernah tumpang tindih --
+     * kalau rebuild() sedang jalan, onDestroy() menunggu sampai selesai (lalu langsung
+     * override hasilnya karena "running" sudah false di awal blok), atau sebaliknya.
+     */
     override fun onDestroy() {
-        running = false
-        isRunning = false
-        isTunnelActive = false
-        activeInstance = null
+        synchronized(this) {
+            running = false
+            isRunning = false
+            isTunnelActive = false
+            activeInstance = null
 
-        networkCallback?.let {
-            try {
-                connectivityManager.unregisterNetworkCallback(it)
-            } catch (e: IllegalArgumentException) {
-                // sudah ter-unregister -- abaikan
+            networkCallback?.let {
+                try {
+                    connectivityManager.unregisterNetworkCallback(it)
+                } catch (e: IllegalArgumentException) {
+                    // sudah ter-unregister -- abaikan
+                }
             }
-        }
-        networkCallback = null
+            networkCallback = null
 
-        readerThread?.interrupt()
-        readerThread = null
-        tunFd?.closeQuietly()
-        tunFd = null
+            readerThread?.interrupt()
+            readerThread = null
+            tunFd?.closeQuietly()
+            tunFd = null
+        }
 
         super.onDestroy()
     }
