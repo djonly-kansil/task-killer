@@ -16,6 +16,22 @@ enum class PermissionKind {
     APPOPS
 }
 
+/** Urutan daftar aplikasi. */
+enum class SortMode {
+    NAME_ASC,
+    NAME_DESC,
+    INSTALL_NEW,
+    INSTALL_OLD,
+    RUNNING_FIRST
+}
+
+/** Filter daftar aplikasi. */
+enum class AppFilter {
+    ALL,
+    RUNNING,
+    NETWORK_BLOCKED
+}
+
 data class AppPermission(
     val name: String,
     val label: String,
@@ -32,7 +48,18 @@ data class AppInfo(
     val isRunning: Boolean = false,
     val isDataOn: Boolean = true,
     val uid: Int = 0,
-    val networkAccessMode: NetworkAccessMode = NetworkAccessMode.ALL
+    val networkAccessMode: NetworkAccessMode = NetworkAccessMode.ALL,
+    val installTime: Long = 0L
+)
+
+/** Satu baris pada layar detail RAM. */
+data class RunningAppRam(
+    val appName: String,
+    val packageName: String,
+    val uid: Int,
+    val icon: Drawable? = null,
+    val ramMb: Float = 0f,
+    val isSystemApp: Boolean = false
 )
 
 data class AppManagerState(
@@ -50,5 +77,21 @@ data class AppManagerState(
     val permissionTargetName: String? = null,
     val permissions: List<AppPermission> = emptyList(),
     val isPermissionsLoading: Boolean = false,
-    val permissionBusy: String? = null
+    val permissionBusy: String? = null,
+    // Urutkan & filter
+    val sortMode: SortMode = SortMode.NAME_ASC,
+    val appFilter: AppFilter = AppFilter.ALL,
+    val showSortSheet: Boolean = false,
+    // Jaringan massal
+    val showBulkNetworkSheet: Boolean = false,
+    val isBulkNetworkBusy: Boolean = false,
+    // Pop-up VPN (sekali per sesi aplikasi)
+    val showVpnHint: Boolean = false,
+    // Kill
+    val killingPackages: Set<String> = emptySet(),
+    // Layar RAM detail
+    val showRamDetail: Boolean = false,
+    val ramApps: List<RunningAppRam> = emptyList(),
+    val isRamLoading: Boolean = false,
+    val ramDetailTarget: RunningAppRam? = null
 )

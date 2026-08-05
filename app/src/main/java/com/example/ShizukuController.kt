@@ -315,39 +315,111 @@ object ShizukuController {
     // FORCE STOP / KILL
     // ---------------------------------------------------------------------
 
+    /** User id multi-user (biasanya 0, tapi bisa 10/11 di work profile / clone app). */
+    private fun userIdOf(uid: Int): Int = if (uid > 0) uid / 100000 else 0
+
     /**
-     * Rantai paksa untuk mematikan aplikasi:
-     * 1. `am force-stop --user 0 <pkg>`
-     * 2. `am force-stop <pkg>` (ROM lama)
-     * 3. `cmd activity kill-uid --user 0 <uid>` / `am kill --user 0 <pkg>`
-     * 4. `killall -9` pada nama proses
-     * Jika masih hidup -> diagnosa lewat `dumpsys activity services/providers` untuk
-     * mengetahui aplikasi lain yang menahannya tetap aktif.
+     * Rantai berlapis untuk benar-benar menghentikan aplikasi, termasuk yang
+     * terikat ke proses sistem:
+     *
+     * 1. `am force-stop --user <u> <pkg>` (+ varian ROM lama)
+     * 2. `am kill` / `cmd activity kill-uid` / `killall -9`
+     * 3. Putus penahan: hentikan service yang di-bind, kunci standby bucket ke
+     *    `restricted`, batalkan job & alarm terjadwal, lalu force-stop ulang.
+     * 4. (opsional, aggressive) `pm disable-user` sesaat lalu `pm enable` —
+     *    memutus semua binding sistem dan memaksa proses mati.
      */
-    fun forceStopPackageDetailed(packageName: String, uid: Int): ForceStopResult {
+    fun forceStopPackageDetailed(
+        packageName: String,
+        uid: Int,
+        aggressive: Boolean = true
+    ): ForceStopResult {
         if (!isReady()) {
             return ForceStopResult(false, true, emptyList(), "Shizuku belum aktif atau izin belum diberikan.")
         }
 
+        val u = userIdOf(uid)
         var anyOk = false
-        val steps = listOf(
-            "am force-stop --user 0 $packageName",
-            "am force-stop $packageName",
-            if (uid > 0) "cmd activity kill-uid --user 0 $uid" else null,
-            "am kill --user 0 $packageName",
-            "killall -9 $packageName"
-        ).filterNotNull()
 
-        for (cmd in steps) {
-            if (run(cmd).ok) anyOk = true
-            if (!isPackageRunning(packageName)) {
-                return ForceStopResult(true, false)
+        fun tryAll(cmds: List<String>): Boolean {
+            for (cmd in cmds) {
+                if (run(cmd).ok) anyOk = true
+                if (!isPackageRunning(packageName)) return true
+            }
+            return !isPackageRunning(packageName)
+        }
+
+        // Tahap 1 — force-stop standar.
+        if (tryAll(
+                listOf(
+                    "am force-stop --user $u $packageName",
+                    "am force-stop $packageName"
+                )
+            )
+        ) return ForceStopResult(true, false, emptyList(), "force-stop")
+
+        // Tahap 2 — kill proses & uid.
+        if (tryAll(
+                listOfNotNull(
+                    "am kill --user $u $packageName",
+                    if (uid > 0) "cmd activity kill-uid --user $u $uid" else null,
+                    "killall -9 $packageName"
+                )
+            )
+        ) return ForceStopResult(true, false, emptyList(), "kill proses")
+
+        // Tahap 3 — putus penahan sistem lalu force-stop ulang.
+        stopBoundServices(packageName, u)
+        run("am set-standby-bucket $packageName restricted")
+        run("cmd jobscheduler cancel-all $packageName")
+        run("cmd jobscheduler cancel $packageName")
+        run("cmd deviceidle whitelist -$packageName")
+        run("cmd appops set $packageName RUN_ANY_IN_BACKGROUND ignore")
+        run("cmd appops set $packageName RUN_IN_BACKGROUND ignore")
+        run("cmd appops set $packageName START_FOREGROUND ignore")
+
+        if (tryAll(
+                listOf(
+                    "am force-stop --user $u $packageName",
+                    "am kill --user $u $packageName"
+                )
+            )
+        ) return ForceStopResult(true, false, emptyList(), "putus penahan sistem")
+
+        // Tahap 4 — cabut aplikasi sesaat (memutus semua binding sistem).
+        if (aggressive) {
+            val disabled = run("pm disable-user --user $u $packageName").ok ||
+                run("pm disable-user $packageName").ok
+            if (disabled) {
+                run("am force-stop --user $u $packageName")
+                Thread.sleep(400)
+                val dead = !isPackageRunning(packageName)
+                // Selalu nyalakan kembali supaya aplikasi tidak hilang dari launcher.
+                run("pm enable --user $u $packageName")
+                run("pm enable $packageName")
+                if (dead) {
+                    return ForceStopResult(true, false, emptyList(), "disable sesaat")
+                }
             }
         }
 
         // Masih hidup -> cari siapa yang menahannya.
         val holders = findKeepAliveHolders(packageName)
-        return ForceStopResult(anyOk, true, holders)
+        return ForceStopResult(anyOk, true, holders, "masih hidup setelah semua tahap")
+    }
+
+    /** Hentikan seluruh service milik paket yang sedang di-bind proses lain. */
+    private fun stopBoundServices(packageName: String, userId: Int) {
+        val out = executeWithOutput("dumpsys activity services $packageName")
+        if (out.isBlank()) return
+        Regex("""ServiceRecord\{[^}]*\s($packageName/[A-Za-z0-9_.\$]+)""")
+            .findAll(out)
+            .map { it.groupValues[1] }
+            .distinct()
+            .take(12)
+            .forEach { component ->
+                run("am stopservice --user $userId $component")
+            }
     }
 
     /** Kompatibilitas lama. */
@@ -403,4 +475,34 @@ object ShizukuController {
             .map { it.trim() }
             .any { it == packageName || it.startsWith("$packageName:") }
     }
+
+    // ---------------------------------------------------------------------
+    // RAM PER APLIKASI
+    // ---------------------------------------------------------------------
+
+    /**
+     * Pemakaian RAM (RSS, dalam MB) per paket yang sedang berjalan.
+     * Proses anak (`pkg:remote`) dijumlahkan ke paket induknya.
+     */
+    fun getRunningPackageMemoryMb(): Map<String, Float> {
+        if (!isReady()) return emptyMap()
+        val out = executeWithOutput("ps -A -o RSS,NAME")
+        if (out.isBlank()) return emptyMap()
+
+        val result = mutableMapOf<String, Float>()
+        out.lineSequence().forEach { raw ->
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("RSS")) return@forEach
+            val parts = line.split(Regex("\\s+"))
+            if (parts.size < 2) return@forEach
+            val rssKb = parts[0].toLongOrNull() ?: return@forEach
+            val procName = parts[1]
+            // hanya proses aplikasi (punya titik pada nama paket)
+            if (!procName.contains('.')) return@forEach
+            val pkg = procName.substringBefore(':')
+            result[pkg] = (result[pkg] ?: 0f) + rssKb / 1024f
+        }
+        return result
+    }
 }
+

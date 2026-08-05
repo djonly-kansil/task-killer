@@ -19,6 +19,9 @@ class AppManagerViewModel : ViewModel() {
     private val _state = MutableStateFlow(AppManagerState())
     val state: StateFlow<AppManagerState> = _state.asStateFlow()
 
+    /** Pop-up "VPN belum aktif" hanya sekali selama proses aplikasi hidup. */
+    private var vpnHintShownThisSession = false
+
     fun selectTab(tabIndex: Int) {
         _state.value = _state.value.copy(currentTab = tabIndex)
     }
@@ -59,7 +62,8 @@ class AppManagerViewModel : ViewModel() {
                         isRunning = bulk.isRunning(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
                         uid = appInfo.uid,
-                        networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL
+                        networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL,
+                        installTime = pkg.firstInstallTime
                     )
 
                     if (isSystem) systemApps.add(info) else userApps.add(info)
@@ -120,6 +124,39 @@ class AppManagerViewModel : ViewModel() {
     }
 
     // ---------------------------------------------------------------------
+    // URUTKAN & FILTER
+    // ---------------------------------------------------------------------
+
+    fun openSortSheet() { _state.value = _state.value.copy(showSortSheet = true) }
+    fun closeSortSheet() { _state.value = _state.value.copy(showSortSheet = false) }
+
+    fun setSortMode(mode: SortMode) {
+        _state.value = _state.value.copy(sortMode = mode)
+    }
+
+    fun setAppFilter(filter: AppFilter) {
+        _state.value = _state.value.copy(appFilter = filter)
+    }
+
+    fun visibleApps(source: List<AppInfo>): List<AppInfo> {
+        val s = _state.value
+        val filtered = when (s.appFilter) {
+            AppFilter.ALL -> source
+            AppFilter.RUNNING -> source.filter { it.isRunning }
+            AppFilter.NETWORK_BLOCKED -> source.filter { it.networkAccessMode != NetworkAccessMode.ALL }
+        }
+        return when (s.sortMode) {
+            SortMode.NAME_ASC -> filtered.sortedBy { it.appName.lowercase() }
+            SortMode.NAME_DESC -> filtered.sortedByDescending { it.appName.lowercase() }
+            SortMode.INSTALL_NEW -> filtered.sortedByDescending { it.installTime }
+            SortMode.INSTALL_OLD -> filtered.sortedBy { it.installTime }
+            SortMode.RUNNING_FIRST -> filtered.sortedWith(
+                compareByDescending<AppInfo> { it.isRunning }.thenBy { it.appName.lowercase() }
+            )
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // VPN — MASTER SWITCH
     // ---------------------------------------------------------------------
 
@@ -135,7 +172,7 @@ class AppManagerViewModel : ViewModel() {
 
     /** ON: langsung nyala, tanpa menunggu logika lain. */
     fun startVpn(context: Context) {
-        _state.value = _state.value.copy(isVpnActive = true)
+        _state.value = _state.value.copy(isVpnActive = true, showVpnHint = false)
         VpnController.start(context)
     }
 
@@ -145,7 +182,21 @@ class AppManagerViewModel : ViewModel() {
         VpnController.stop(context)
     }
 
+    fun dismissVpnHint() {
+        _state.value = _state.value.copy(showVpnHint = false)
+    }
+
+    /** Tampilkan pop-up VPN maksimal sekali per sesi aplikasi. */
+    private fun maybeShowVpnHint(mode: NetworkAccessMode) {
+        if (mode == NetworkAccessMode.ALL) return
+        if (_state.value.isVpnActive) return
+        if (vpnHintShownThisSession) return
+        vpnHintShownThisSession = true
+        _state.value = _state.value.copy(showVpnHint = true)
+    }
+
     fun setAppNetworkMode(packageName: String, uid: Int, mode: NetworkAccessMode, context: Context) {
+        maybeShowVpnHint(mode)
         viewModelScope.launch(Dispatchers.IO) {
             VpnRulesRepository.setMode(context, uid, mode)
             withContext(Dispatchers.Main) {
@@ -155,14 +206,68 @@ class AppManagerViewModel : ViewModel() {
     }
 
     // ---------------------------------------------------------------------
+    // JARINGAN MASSAL
+    // ---------------------------------------------------------------------
+
+    fun openBulkNetworkSheet() { _state.value = _state.value.copy(showBulkNetworkSheet = true) }
+    fun closeBulkNetworkSheet() { _state.value = _state.value.copy(showBulkNetworkSheet = false) }
+
+    /** Terapkan satu mode jaringan ke semua aplikasi pada tab yang sedang aktif. */
+    fun setNetworkModeForAll(mode: NetworkAccessMode, context: Context) {
+        maybeShowVpnHint(mode)
+        val isSystemTab = _state.value.currentTab == 1
+        val targets = if (isSystemTab) _state.value.systemApps else _state.value.userApps
+        _state.value = _state.value.copy(isBulkNetworkBusy = true, showBulkNetworkSheet = false)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            targets.forEach { app -> VpnRulesRepository.setMode(context, app.uid, mode) }
+            withContext(Dispatchers.Main) {
+                _state.value = if (isSystemTab) {
+                    _state.value.copy(
+                        systemApps = _state.value.systemApps.map { it.copy(networkAccessMode = mode) },
+                        isBulkNetworkBusy = false
+                    )
+                } else {
+                    _state.value.copy(
+                        userApps = _state.value.userApps.map { it.copy(networkAccessMode = mode) },
+                        isBulkNetworkBusy = false
+                    )
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // KILL
     // ---------------------------------------------------------------------
 
+    /**
+     * Hentikan aplikasi memakai rantai berlapis, lalu pantau ~9 detik.
+     * Jika aplikasi langsung hidup lagi, otomatis dihentikan ulang (maks 3x)
+     * supaya pengguna tidak perlu menekan tombol berkali-kali.
+     */
     fun forceStopApp(packageName: String, uid: Int, context: Context) {
+        if (_state.value.killingPackages.contains(packageName)) return
+        _state.value = _state.value.copy(
+            killingPackages = _state.value.killingPackages + packageName
+        )
+
         viewModelScope.launch(Dispatchers.IO) {
-            val result = ShizukuController.forceStopPackageDetailed(packageName, uid)
-            delay(300)
-            val stillRunning = ShizukuController.isPackageRunning(packageName)
+            var result = ShizukuController.forceStopPackageDetailed(packageName, uid)
+            var attempts = 1
+            var stillRunning = result.stillRunning
+
+            // Pantau respawn cepat.
+            while (attempts < 3) {
+                delay(3000)
+                if (!ShizukuController.isPackageRunning(packageName)) {
+                    stillRunning = false
+                    break
+                }
+                result = ShizukuController.forceStopPackageDetailed(packageName, uid)
+                stillRunning = result.stillRunning
+                attempts++
+            }
 
             val holders = if (stillRunning && result.keptAliveBy.isEmpty()) {
                 ShizukuController.findKeepAliveHolders(packageName)
@@ -172,24 +277,36 @@ class AppManagerViewModel : ViewModel() {
                 val message = when {
                     !stillRunning -> null
                     holders.isNotEmpty() ->
-                        "Tetap aktif karena ditahan oleh: ${holders.joinToString(", ")}. Hentikan/batasi app tersebut dulu."
+                        "Masih hidup, ditahan oleh: ${holders.take(3).joinToString(", ")}. Hentikan aplikasi itu dulu, lalu coba lagi."
                     !result.commandSucceeded ->
-                        "Gagal menghentikan aplikasi. Pastikan Shizuku aktif & izin diberikan."
+                        "Gagal menghentikan. Pastikan Shizuku aktif & izin diberikan."
                     else ->
-                        "Aplikasi langsung hidup kembali dan tidak terdeteksi penahannya (kemungkinan dijadwalkan sistem/alarm)."
+                        "Aplikasi dijadwalkan sistem dan langsung hidup lagi. Tekan Hentikan sekali lagi bila perlu."
                 }
                 if (message != null) {
                     _state.value = _state.value.copy(errorMessage = message)
                 }
+                _state.value = _state.value.copy(
+                    killingPackages = _state.value.killingPackages - packageName
+                )
                 updateSingleAppRunningState(packageName, stillRunning)
                 updateRamInfo(context)
+                if (_state.value.showRamDetail) loadRamApps(context)
             }
         }
     }
 
     fun killAllUserApps(context: Context) {
+        val isSystemTab = _state.value.currentTab == 1
+        val source = if (isSystemTab) _state.value.systemApps else _state.value.userApps
+        val appsToKill = source.filter { it.isRunning && it.packageName != context.packageName }
+        if (appsToKill.isEmpty()) return
+
+        _state.value = _state.value.copy(
+            killingPackages = _state.value.killingPackages + appsToKill.map { it.packageName }
+        )
+
         viewModelScope.launch(Dispatchers.IO) {
-            val appsToKill = _state.value.userApps.filter { it.isRunning }
             val survivors = mutableListOf<String>()
             val holdersAll = linkedSetOf<String>()
 
@@ -202,14 +319,17 @@ class AppManagerViewModel : ViewModel() {
             }
 
             withContext(Dispatchers.Main) {
-                if (survivors.isNotEmpty()) {
-                    val holderText = if (holdersAll.isNotEmpty()) {
-                        " Ditahan oleh: ${holdersAll.take(5).joinToString(", ")}."
-                    } else ""
-                    _state.value = _state.value.copy(
-                        errorMessage = "Masih aktif: ${survivors.take(5).joinToString(", ")}.$holderText"
-                    )
-                }
+                _state.value = _state.value.copy(
+                    killingPackages = emptySet(),
+                    errorMessage = if (survivors.isEmpty()) {
+                        "${appsToKill.size} aplikasi dihentikan."
+                    } else {
+                        val holderText = if (holdersAll.isNotEmpty()) {
+                            " Ditahan oleh: ${holdersAll.take(3).joinToString(", ")}."
+                        } else ""
+                        "Masih aktif: ${survivors.take(4).joinToString(", ")}.$holderText"
+                    }
+                )
                 loadData(context)
             }
         }
@@ -231,6 +351,70 @@ class AppManagerViewModel : ViewModel() {
                     updateAppNetworkState(packageName, newStatus)
                 }
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // LAYAR RAM DETAIL
+    // ---------------------------------------------------------------------
+
+    fun openRamDetail(context: Context) {
+        _state.value = _state.value.copy(showRamDetail = true, isRamLoading = true)
+        loadRamApps(context)
+    }
+
+    fun closeRamDetail() {
+        _state.value = _state.value.copy(showRamDetail = false, ramDetailTarget = null)
+    }
+
+    fun selectRamApp(app: RunningAppRam?) {
+        _state.value = _state.value.copy(ramDetailTarget = app)
+    }
+
+    fun loadRamApps(context: Context) {
+        viewModelScope.launch {
+            updateRamInfo(context)
+            val list = withContext(Dispatchers.IO) {
+                val known = (_state.value.userApps + _state.value.systemApps)
+                    .associateBy { it.packageName }
+                val shizukuMem = ShizukuController.getRunningPackageMemoryMb()
+
+                val entries = if (shizukuMem.isNotEmpty()) {
+                    shizukuMem.mapNotNull { (pkg, mb) ->
+                        val info = known[pkg] ?: return@mapNotNull null
+                        RunningAppRam(
+                            appName = info.appName,
+                            packageName = pkg,
+                            uid = info.uid,
+                            icon = info.icon,
+                            ramMb = mb,
+                            isSystemApp = info.isSystemApp
+                        )
+                    }
+                } else {
+                    // Fallback tanpa Shizuku: hanya proses milik sendiri yang terbaca.
+                    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    (am.runningAppProcesses ?: emptyList()).mapNotNull { proc ->
+                        val pkg = proc.processName.substringBefore(':')
+                        val info = known[pkg] ?: return@mapNotNull null
+                        val mem = runCatching {
+                            am.getProcessMemoryInfo(intArrayOf(proc.pid)).firstOrNull()?.totalPss ?: 0
+                        }.getOrDefault(0)
+                        RunningAppRam(
+                            appName = info.appName,
+                            packageName = pkg,
+                            uid = info.uid,
+                            icon = info.icon,
+                            ramMb = mem / 1024f,
+                            isSystemApp = info.isSystemApp
+                        )
+                    }
+                }
+
+                entries.distinctBy { it.packageName }.sortedByDescending { it.ramMb }
+            }
+
+            _state.value = _state.value.copy(ramApps = list, isRamLoading = false)
         }
     }
 
@@ -282,7 +466,7 @@ class AppManagerViewModel : ViewModel() {
         val pkg = _state.value.permissionTargetPackage ?: return
         if (permission.isProtected) {
             _state.value = _state.value.copy(
-                errorMessage = "Izin dilindungi: ${permission.label} tidak bisa diubah."
+                errorMessage = "Izin terkunci: ${permission.label} tidak bisa diubah."
             )
             return
         }
@@ -305,7 +489,7 @@ class AppManagerViewModel : ViewModel() {
                         }
                     )
                 } else {
-                    // biarkan switch kembali ke posisi semula + notif
+                    // kembalikan ke posisi semula + tandai terkunci
                     _state.value.copy(
                         permissionBusy = null,
                         permissions = _state.value.permissions.map {

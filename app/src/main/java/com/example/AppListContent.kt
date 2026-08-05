@@ -6,17 +6,17 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -28,13 +28,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.ui.theme.GeometricError
-import com.example.ui.theme.GeometricOnError
+import com.example.ui.theme.GeometricAllow
+import com.example.ui.theme.GeometricDeny
 import com.example.ui.theme.GeometricSuccess
 
 @Composable
@@ -42,28 +43,30 @@ fun AppListContent(
     apps: List<AppInfo>,
     viewModel: AppManagerViewModel,
     context: Context,
-    
-    isVpnActive: Boolean
+    isVpnActive: Boolean,
+    killingPackages: Set<String>
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 16.dp, top = 4.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp, top = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(apps, key = { it.packageName }) { app ->
             AppItemCard(
                 app = app,
-                isVpnActive = isVpnActive,
+                isKilling = killingPackages.contains(app.packageName),
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
-                onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
+                onSelectNetworkMode = { mode ->
+                    viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context)
+                },
                 onOpenPermissions = { viewModel.openPermissions(app.packageName, app.appName) },
+                onUninstall = { viewModel.uninstallApp(app.packageName, context) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:${app.packageName}")
                     }
                     context.startActivity(intent)
-                },
-                onUninstall = { viewModel.uninstallApp(app.packageName, context) }
+                }
             )
         }
     }
@@ -72,205 +75,210 @@ fun AppListContent(
 @Composable
 fun AppItemCard(
     app: AppInfo,
-    isVpnActive: Boolean,
+    isKilling: Boolean,
     onForceStop: () -> Unit,
     onSelectNetworkMode: (NetworkAccessMode) -> Unit,
     onOpenPermissions: () -> Unit,
-    onInfo: () -> Unit,
-    onUninstall: () -> Unit
+    onUninstall: () -> Unit,
+    onInfo: () -> Unit
 ) {
-    
-    var pendingVpnHintMode by remember { mutableStateOf<NetworkAccessMode?>(null) }
+    var networkMenu by remember { mutableStateOf(false) }
+    var confirmUninstall by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Icon
-            Box(
-                modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (app.icon != null) {
-                    AsyncImage(model = app.icon, contentDescription = app.appName, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
-                } else {
-                    Box(modifier = Modifier.size(28.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp)))
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (app.icon != null) {
+                        AsyncImage(
+                            model = app.icon,
+                            contentDescription = app.appName,
+                            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(26.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        app.appName,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        app.packageName,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (app.isRunning) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(GeometricSuccess, RoundedCornerShape(4.dp))
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Name & Package
-            Column(modifier = Modifier.weight(1f)) {
-                Text(app.appName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-
-            
-            var menuExpanded by remember { mutableStateOf(false) }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 2.dp)
-            ) {
-                Text(
-                    text = networkModeLabel(app.networkAccessMode),
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = networkModeColor(app.networkAccessMode)
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Box {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .background(networkModeColor(app.networkAccessMode), CircleShape)
-                            .clickable { menuExpanded = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = networkModeIcon(app.networkAccessMode),
-                            contentDescription = "Mode Jaringan",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.weight(1f)) {
+                    SmallActionChip(
+                        text = networkModeLabel(app.networkAccessMode),
+                        icon = networkModeIcon(app.networkAccessMode),
+                        color = networkModeColor(app.networkAccessMode),
+                        onClick = { networkMenu = true }
+                    )
+                    DropdownMenu(expanded = networkMenu, onDismissRequest = { networkMenu = false }) {
                         NetworkAccessMode.values().forEach { mode ->
                             DropdownMenuItem(
-                                text = { Text(networkModeLabel(mode), fontWeight = if (mode == app.networkAccessMode) FontWeight.Bold else FontWeight.Normal) },
-                                leadingIcon = { Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode)) },
+                                text = {
+                                    Text(
+                                        networkModeLabel(mode),
+                                        fontSize = 13.sp,
+                                        fontWeight = if (mode == app.networkAccessMode) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(networkModeIcon(mode), contentDescription = null, tint = networkModeColor(mode))
+                                },
                                 onClick = {
-                                    menuExpanded = false
-                                    if (mode != NetworkAccessMode.ALL && !isVpnActive) {
-                                        pendingVpnHintMode = mode
-                                    } else {
-                                        onSelectNetworkMode(mode)
-                                    }
+                                    networkMenu = false
+                                    onSelectNetworkMode(mode)
                                 }
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Kolom Action (Perm, Kill, Info, Del)
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // PERMISSIONS
-                    Button(
-                        onClick = onOpenPermissions,
-                        modifier = Modifier.height(24.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = GeometricSuccess,
-                            contentColor = Color.White
-                        ),
-                        shape = CircleShape
-                    ) {
-                        Text("PERM", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // KILL BUTTON
-                    Button(
-                        onClick = onForceStop,
-                        enabled = app.isRunning,
-                        modifier = Modifier.height(24.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = GeometricError,
-                            contentColor = GeometricOnError,
-                            disabledContainerColor = Color.Gray.copy(alpha = 0.4f),
-                            disabledContentColor = Color.LightGray
-                        ),
-                        shape = CircleShape
-                    ) {
-                        Text("KILL", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    SmallActionChip(
+                        text = "Izin",
+                        icon = Icons.Default.Security,
+                        color = GeometricAllow,
+                        onClick = onOpenPermissions
+                    )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedButton(
-                        onClick = onInfo,
-                        modifier = Modifier.height(22.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onBackground),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        shape = CircleShape
-                    ) {
-                        Text("INFO", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    SmallActionChip(
+                        text = if (isKilling) "..." else "Hentikan",
+                        icon = Icons.Default.Stop,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        enabled = !isKilling,
+                        onClick = onForceStop
+                    )
+                }
 
-                    if (!app.isSystemApp) {
-                        OutlinedButton(
-                            onClick = onUninstall,
-                            modifier = Modifier.height(22.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GeometricError),
-                            border = BorderStroke(1.dp, GeometricError.copy(alpha = 0.6f)),
-                            shape = CircleShape
-                        ) {
-                            Text("DEL", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                Box(modifier = Modifier.weight(1f)) {
+                    SmallActionChip(
+                        text = if (app.isSystemApp) "Info" else "Uninstall",
+                        icon = if (app.isSystemApp) Icons.Default.Security else Icons.Default.Delete,
+                        color = if (app.isSystemApp) MaterialTheme.colorScheme.onSurfaceVariant else GeometricDeny,
+                        onClick = { if (app.isSystemApp) onInfo() else confirmUninstall = true }
+                    )
                 }
             }
         }
     }
 
-    val hintMode = pendingVpnHintMode
-    if (hintMode != null) {
+    if (confirmUninstall) {
         AlertDialog(
-            onDismissRequest = { pendingVpnHintMode = null },
-            title = { Text("VPN belum aktif") },
-            text = {
-                Text(
-                    "Mode \"${networkModeLabel(hintMode)}\" untuk ${app.appName} akan tersimpan, " +
-                        "tapi belum berpengaruh ke jaringan sampai Anda menyalakan VPN di layar utama. " +
-                        "Simpan aturan ini sekarang?"
-                )
-            },
+            onDismissRequest = { confirmUninstall = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text("Hapus ${app.appName}?", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = { Text("Aplikasi beserta datanya akan dihapus dari perangkat.", fontSize = 13.sp) },
             confirmButton = {
                 TextButton(onClick = {
-                    onSelectNetworkMode(hintMode)
-                    pendingVpnHintMode = null
-                }) { Text("Simpan") }
+                    confirmUninstall = false
+                    onUninstall()
+                }) { Text("Hapus", color = GeometricDeny, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingVpnHintMode = null }) { Text("Batal") }
+                TextButton(onClick = { confirmUninstall = false }) { Text("Batal") }
             }
         )
     }
 }
 
-private fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {
-    NetworkAccessMode.ALL -> "ALL"
-    NetworkAccessMode.WIFI_ONLY -> "WIFI"
-    NetworkAccessMode.CELLULAR_ONLY -> "SELULER"
-    NetworkAccessMode.BLOCKED -> "BLOKIR"
+/** Tombol kecil bergaya pil, tinggi 28dp — ringkas seperti pada desain. */
+@Composable
+fun SmallActionChip(
+    text: String,
+    icon: ImageVector,
+    color: Color,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val tint = if (enabled) color else color.copy(alpha = 0.4f)
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = RoundedCornerShape(10.dp),
+        color = tint.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, tint.copy(alpha = 0.45f)),
+        modifier = Modifier.fillMaxWidth().height(28.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
 }
 
+fun networkModeLabel(mode: NetworkAccessMode): String = when (mode) {
+    NetworkAccessMode.ALL -> "Jaringan All"
+    NetworkAccessMode.WIFI_ONLY -> "WiFi saja"
+    NetworkAccessMode.CELLULAR_ONLY -> "Seluler saja"
+    NetworkAccessMode.BLOCKED -> "Blokir"
+}
 
 @Composable
-private fun networkModeColor(mode: NetworkAccessMode): Color = when (mode) {
-    NetworkAccessMode.ALL -> GeometricSuccess
-    NetworkAccessMode.WIFI_ONLY -> MaterialTheme.colorScheme.tertiary
-    NetworkAccessMode.CELLULAR_ONLY -> MaterialTheme.colorScheme.secondary
-    NetworkAccessMode.BLOCKED -> GeometricError
+fun networkModeColor(mode: NetworkAccessMode): Color = when (mode) {
+    NetworkAccessMode.ALL -> GeometricAllow
+    NetworkAccessMode.WIFI_ONLY -> MaterialTheme.colorScheme.primary
+    NetworkAccessMode.CELLULAR_ONLY -> MaterialTheme.colorScheme.primary
+    NetworkAccessMode.BLOCKED -> GeometricDeny
 }
 
-private fun networkModeIcon(mode: NetworkAccessMode) = when (mode) {
+fun networkModeIcon(mode: NetworkAccessMode): ImageVector = when (mode) {
     NetworkAccessMode.ALL -> Icons.Default.Public
     NetworkAccessMode.WIFI_ONLY -> Icons.Default.Wifi
     NetworkAccessMode.CELLULAR_ONLY -> Icons.Default.SignalCellularAlt

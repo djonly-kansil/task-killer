@@ -19,3 +19,10 @@ val GeometricOnSurfaceVariant = Color(0xFF9090A7)
 val GeometricSuccess = Color(0xFF4CD964)
 val GeometricError = Color(0xFFFF5252)       // Merah/Salmon untuk tombol KILL
 val GeometricOnError = Color(0xFFFFFFFF)
+
+// Permission state colors
+val GeometricAllow = Color(0xFF3DDC84)       // Hijau terang: izin aktif / bisa diubah
+val GeometricDeny = Color(0xFFFF453A)        // Merah terang: izin mati
+val GeometricLocked = Color(0xFFFF1F1F)      // Merah terang: izin terkunci (tak bisa diubah)
+val GeometricNeutral = Color(0xFF3A3A4E)     // Tombol netral (Hentikan)
+
