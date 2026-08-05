@@ -1,0 +1,152 @@
+package com.example
+
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/** Kumpulan teks antarmuka untuk satu bahasa. */
+data class Strings(
+    // Header
+    val appTitle: String,
+    val appTitleAccent: String,
+    val shizukuConnected: String,
+    val shizukuDisconnected: String,
+    val settings: String,
+    // VPN card
+    val vpnFilter: String,
+    val vpnOff: String,
+    val vpnOnActive: String,
+    val vpnOnPreparing: String,
+    // Memory card
+    val memoryUsage: String,
+    // Quick actions
+    val networkAccessAll: String,
+    val killAll: String,
+    val filterAndSort: String,
+    // Tabs / titles
+    val userApps: String,
+    val systemApps: String,
+    val info: String,
+    val tabApps: String,
+    val tabSystem: String,
+    val tabAbout: String,
+    // About
+    val version: String,
+    val serviceStatus: String,
+    // Permission dialog
+    val permissionsTitle: String,
+    val permissionsSearch: String,
+    val permissionsEmpty: String,
+    val permissionsNoMatch: String,
+    val permissionsRuntime: String,
+    val permissionsAppOps: String,
+    val legendChangeable: String,
+    val legendLocked: String,
+    val locked: String,
+    val close: String,
+    // Settings screen
+    val settingsTitle: String,
+    val languageSection: String,
+    val themeSection: String,
+    val themeDark: String,
+    val themeLight: String,
+    val themeSystem: String,
+    val languageIndonesian: String,
+    val languageEnglish: String,
+    val openSystemAppInfo: String,
+    val back: String
+)
+
+val IndonesianStrings = Strings(
+    appTitle = "AppController ",
+    appTitleAccent = "Pro",
+    shizukuConnected = "SHIZUKU TERHUBUNG",
+    shizukuDisconnected = "SHIZUKU TERPUTUS",
+    settings = "Pengaturan",
+    vpnFilter = "FILTER VPN",
+    vpnOff = "VPN MATI — filter jaringan tidak aktif",
+    vpnOnActive = "VPN AKTIF — tunnel berjalan",
+    vpnOnPreparing = "VPN AKTIF — menyiapkan tunnel...",
+    memoryUsage = "PENGGUNAAN MEMORI",
+    networkAccessAll = "Akses Jaringan All",
+    killAll = "Hentikan Semua",
+    filterAndSort = "Filter & Urutkan",
+    userApps = "Aplikasi Pengguna",
+    systemApps = "Aplikasi Sistem",
+    info = "Info",
+    tabApps = "Apps",
+    tabSystem = "Sistem",
+    tabAbout = "Tentang",
+    version = "Versi 1.0.0",
+    serviceStatus = "Status layanan",
+    permissionsTitle = "Izin Aplikasi",
+    permissionsSearch = "Cari izin",
+    permissionsEmpty = "Tidak ada izin yang bisa dibaca untuk aplikasi ini.",
+    permissionsNoMatch = "Tidak ada izin yang cocok.",
+    permissionsRuntime = "Izin Runtime",
+    permissionsAppOps = "Izin Lanjutan (AppOps)",
+    legendChangeable = "bisa diubah",
+    legendLocked = "terkunci",
+    locked = "Terkunci",
+    close = "Tutup",
+    settingsTitle = "Pengaturan",
+    languageSection = "Bahasa",
+    themeSection = "Tema",
+    themeDark = "Gelap",
+    themeLight = "Terang",
+    themeSystem = "Ikuti sistem",
+    languageIndonesian = "Indonesia",
+    languageEnglish = "English",
+    openSystemAppInfo = "Buka info aplikasi di sistem",
+    back = "Kembali"
+)
+
+val EnglishStrings = Strings(
+    appTitle = "AppController ",
+    appTitleAccent = "Pro",
+    shizukuConnected = "SHIZUKU CONNECTED",
+    shizukuDisconnected = "SHIZUKU DISCONNECTED",
+    settings = "Settings",
+    vpnFilter = "VPN FILTER",
+    vpnOff = "VPN OFF — network filter inactive",
+    vpnOnActive = "VPN ON — tunnel running",
+    vpnOnPreparing = "VPN ON — preparing tunnel...",
+    memoryUsage = "MEMORY USAGE",
+    networkAccessAll = "Network Access All",
+    killAll = "Kill All",
+    filterAndSort = "Filter & Sort",
+    userApps = "User Apps",
+    systemApps = "System Apps",
+    info = "Info",
+    tabApps = "Apps",
+    tabSystem = "System",
+    tabAbout = "About",
+    version = "Version 1.0.0",
+    serviceStatus = "Service status",
+    permissionsTitle = "App Permissions",
+    permissionsSearch = "Search permission",
+    permissionsEmpty = "No permissions could be read for this app.",
+    permissionsNoMatch = "No matching permission.",
+    permissionsRuntime = "Runtime Permissions",
+    permissionsAppOps = "Advanced (AppOps)",
+    legendChangeable = "changeable",
+    legendLocked = "locked",
+    locked = "Locked",
+    close = "Close",
+    settingsTitle = "Settings",
+    languageSection = "Language",
+    themeSection = "Theme",
+    themeDark = "Dark",
+    themeLight = "Light",
+    themeSystem = "Follow system",
+    languageIndonesian = "Indonesia",
+    languageEnglish = "English",
+    openSystemAppInfo = "Open app info in system settings",
+    back = "Back"
+)
+
+fun stringsFor(language: AppLanguage): Strings =
+    when (language) {
+        AppLanguage.INDONESIAN -> IndonesianStrings
+        AppLanguage.ENGLISH -> EnglishStrings
+    }
+
+val LocalStrings = staticCompositionLocalOf { IndonesianStrings }

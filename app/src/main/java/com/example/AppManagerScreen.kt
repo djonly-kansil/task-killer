@@ -2,18 +2,16 @@ package com.example
 
 import android.app.Activity
 import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lock
@@ -43,9 +41,11 @@ import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppManagerScreen(viewModel: AppManagerViewModel) {
+fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit = {}) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val s = LocalStrings.current
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     var isTunnelActive by remember { mutableStateOf(false) }
@@ -127,8 +127,8 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                 ) {
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("AppController ", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                            Text("Pro", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(s.appTitle, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                            Text(s.appTitleAccent, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                             val isConnected = state.shizukuStatus.contains("Granted")
@@ -136,7 +136,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                             Box(modifier = Modifier.size(8.dp).background(statusColor, CircleShape))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = if (isConnected) "SHIZUKU CONNECTED" else "SHIZUKU DISCONNECTED",
+                                text = if (isConnected) s.shizukuConnected else s.shizukuDisconnected,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = statusColor,
@@ -146,19 +146,15 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     }
 
                     IconButton(
-                        onClick = {
-                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = Uri.parse("package:${context.packageName}")
-                            }
-                            context.startActivity(intent)
-                        },
+                        onClick = onOpenSettings,
                         modifier = Modifier
                             .size(44.dp)
                             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape)
                             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Settings, contentDescription = s.settings, tint = MaterialTheme.colorScheme.onBackground, modifier = Modifier.size(20.dp))
                     }
+
                 }
 
                 // VPN card
@@ -182,13 +178,13 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("VPN FILTER", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                                Text(s.vpnFilter, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
                             }
                             Text(
                                 text = when {
-                                    !state.isVpnActive -> "VPN OFF — filter jaringan tidak aktif"
-                                    isTunnelActive -> "VPN ON — tunnel aktif"
-                                    else -> "VPN ON — menyiapkan tunnel..."
+                                    !state.isVpnActive -> s.vpnOff
+                                    isTunnelActive -> s.vpnOnActive
+                                    else -> s.vpnOnPreparing
                                 },
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -215,7 +211,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("MEMORY USAGE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
+                                Text(s.memoryUsage, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
                                 Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
                                     Text(String.format("%.1f GB", state.usedRamGb), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -255,7 +251,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                     ) {
                         QuickActionCard(
                             icon = Icons.Default.Public,
-                            label = "Akses Jaringan All",
+                            label = s.networkAccessAll,
                             color = GeometricAllow,
                             modifier = Modifier.weight(1f),
                             enabled = !state.isBulkNetworkBusy,
@@ -263,14 +259,14 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
                         )
                         QuickActionCard(
                             icon = Icons.Default.Stop,
-                            label = "Hentikan Semua",
+                            label = s.killAll,
                             color = GeometricDeny,
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.killAllUserApps(context) }
                         )
                         QuickActionCard(
                             icon = Icons.Default.FilterList,
-                            label = "Filter & Urutkan",
+                            label = s.filterAndSort,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.openSortSheet() }
@@ -280,9 +276,9 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
 
                 // Judul daftar
                 val titleText = when (state.currentTab) {
-                    0 -> "Aplikasi Pengguna"
-                    1 -> "Aplikasi Sistem"
-                    else -> "Info"
+                    0 -> s.userApps
+                    1 -> s.systemApps
+                    else -> s.info
                 }
                 Column(modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp)) {
                     Text(titleText, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -419,52 +415,137 @@ fun PermissionsDialog(
     onToggle: (AppPermission) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val s = LocalStrings.current
+    var query by remember(packageName) { mutableStateOf("") }
+
+    val filtered = remember(permissions, query) {
+        if (query.isBlank()) permissions
+        else permissions.filter {
+            it.label.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true)
+        }
+    }
+    val runtimePerms = filtered.filter { it.kind == PermissionKind.RUNTIME }
+    val appopsPerms = filtered.filter { it.kind == PermissionKind.APPOPS }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surface,
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Tutup", fontWeight = FontWeight.Bold) }
+            TextButton(onClick = onDismiss) { Text(s.close, fontWeight = FontWeight.Bold) }
         },
         title = {
             Column {
-                Text("Izin Aplikasi", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(appName, fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground)
-                Text(packageName, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    LegendDot(GeometricAllow, "bisa diubah")
-                    LegendDot(GeometricLocked, "terkunci")
+                Text(
+                    s.permissionsTitle,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    appName,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    packageName,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    modifier = Modifier.padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    LegendDot(GeometricAllow, s.legendChangeable)
+                    LegendDot(GeometricLocked, s.legendLocked)
                 }
             }
         },
         text = {
             when {
                 isLoading -> Box(
-                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
                     contentAlignment = Alignment.Center
                 ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
 
-                permissions.isEmpty() -> Text("Tidak ada izin yang bisa dibaca untuk aplikasi ini.", fontSize = 12.sp)
+                permissions.isEmpty() -> Text(
+                    s.permissionsEmpty,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
-                else -> Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    permissions.forEach { perm ->
-                        key(perm.kind, perm.name) {
-                            PermissionRow(
-                                perm = perm,
-                                isBusy = busyPermission == perm.name,
-                                onToggle = { onToggle(perm) }
-                            )
+                else -> Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                        placeholder = {
+                            Text(s.permissionsSearch, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (filtered.isEmpty()) {
+                        Text(
+                            s.permissionsNoMatch,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                        ) {
+                            if (runtimePerms.isNotEmpty()) {
+                                item(key = "h-runtime") {
+                                    PermissionSectionHeader("${s.permissionsRuntime} (${runtimePerms.size})")
+                                }
+                                items(runtimePerms, key = { "R:${it.name}" }) { perm ->
+                                    PermissionRow(
+                                        perm = perm,
+                                        isBusy = busyPermission == perm.name,
+                                        onToggle = { onToggle(perm) }
+                                    )
+                                }
+                            }
+                            if (appopsPerms.isNotEmpty()) {
+                                item(key = "h-appops") {
+                                    PermissionSectionHeader("${s.permissionsAppOps} (${appopsPerms.size})")
+                                }
+                                items(appopsPerms, key = { "A:${it.name}" }) { perm ->
+                                    PermissionRow(
+                                        perm = perm,
+                                        isBusy = busyPermission == perm.name,
+                                        onToggle = { onToggle(perm) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    )
+}
+
+@Composable
+private fun PermissionSectionHeader(title: String) {
+    Text(
+        title.uppercase(),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
     )
 }
 
@@ -479,8 +560,8 @@ private fun LegendDot(color: Color, text: String) {
 
 @Composable
 private fun PermissionRow(perm: AppPermission, isBusy: Boolean, onToggle: () -> Unit) {
+    val s = LocalStrings.current
     val locked = perm.isProtected
-    val labelColor = if (locked) GeometricLocked else GeometricAllow
     val stateColor = if (perm.isGranted) GeometricAllow else GeometricDeny
     val stateText = when {
         perm.kind == PermissionKind.APPOPS -> if (perm.isGranted) "ALLOW" else "IGNORE"
@@ -488,57 +569,76 @@ private fun PermissionRow(perm: AppPermission, isBusy: Boolean, onToggle: () -> 
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+        Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
             Text(
                 perm.label,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = labelColor,
-                maxLines = 2,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 1.dp)) {
                 Text(
                     if (perm.kind == PermissionKind.APPOPS) "APPOPS" else "RUNTIME",
-                    fontSize = 8.sp,
+                    fontSize = 9.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (locked) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = GeometricLocked, modifier = Modifier.size(9.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = s.locked,
+                        tint = GeometricLocked,
+                        modifier = Modifier.size(10.dp)
+                    )
                     Spacer(modifier = Modifier.width(2.dp))
-                    Text("TERKUNCI", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = GeometricLocked)
+                    Text(
+                        s.locked.uppercase(),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GeometricLocked
+                    )
                 }
             }
         }
 
-        if (isBusy) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.primary
-            )
-        } else {
-            Surface(
-                onClick = onToggle,
-                enabled = !locked,
-                shape = RoundedCornerShape(9.dp),
-                color = stateColor.copy(alpha = if (locked) 0.08f else 0.16f),
-                border = BorderStroke(1.dp, stateColor.copy(alpha = if (locked) 0.3f else 0.6f)),
-                modifier = Modifier.height(24.dp).widthIn(min = 62.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        stateText,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (locked) stateColor.copy(alpha = 0.6f) else stateColor
-                    )
+        Box(
+            modifier = Modifier.width(74.dp).height(28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isBusy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Surface(
+                    onClick = onToggle,
+                    enabled = !locked,
+                    shape = RoundedCornerShape(8.dp),
+                    color = stateColor.copy(alpha = if (locked) 0.08f else 0.16f),
+                    border = BorderStroke(1.dp, stateColor.copy(alpha = if (locked) 0.3f else 0.6f)),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            stateText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (locked) stateColor.copy(alpha = 0.6f) else stateColor
+                        )
+                    }
                 }
             }
         }
     }
 }
+
