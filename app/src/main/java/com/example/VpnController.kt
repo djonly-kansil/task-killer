@@ -47,4 +47,28 @@ object VpnController {
         VpnRulesRepository.isMasterEnabled(context) || LocalVpnService.isRunning
 
     fun isTunnelActive(context: Context): Boolean = LocalVpnService.isTunnelActive
+
+    /**
+     * Jeda sementara untuk operasi massal: tunnel ditutup & service dihentikan,
+     * TAPI flag master (niat pengguna) tidak diubah sehingga VPN bisa dinyalakan
+     * kembali setelah operasi selesai.
+     */
+    fun pauseForBulk(context: Context) {
+        LocalVpnService.shutdownNow()
+        val intent = Intent(context, LocalVpnService::class.java)
+            .setAction(LocalVpnService.ACTION_STOP)
+        try {
+            context.startService(intent)
+        } catch (e: Exception) {
+            // service mungkin sudah mati; abaikan.
+        }
+    }
+
+    /** Nyalakan kembali setelah operasi massal, hanya bila master masih ON. */
+    fun resumeAfterBulk(context: Context) {
+        if (!VpnRulesRepository.isMasterEnabled(context)) return
+        val intent = Intent(context, LocalVpnService::class.java)
+            .setAction(LocalVpnService.ACTION_START)
+        ContextCompat.startForegroundService(context, intent)
+    }
 }

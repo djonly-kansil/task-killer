@@ -3,6 +3,7 @@ package com.example
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +31,9 @@ fun SettingsScreen(
 ) {
     val s = LocalStrings.current
     val context = LocalContext.current
+
+    // Tombol/gesture kembali sistem harus kembali ke tampilan utama, bukan menutup app.
+    BackHandler(enabled = true) { onBack() }
 
     Column(
         modifier = Modifier
