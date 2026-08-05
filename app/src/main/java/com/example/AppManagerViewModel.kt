@@ -220,17 +220,35 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(isBulkNetworkBusy = true, showBulkNetworkSheet = false)
 
         viewModelScope.launch(Dispatchers.IO) {
-            targets.forEach { app -> VpnRulesRepository.setMode(context, app.uid, mode) }
+            // VPN dijeda dulu bila aktif: menulis aturan satu-per-satu sambil tunnel
+            // hidup memicu ratusan rebuild dan membuat app crash.
+            val wasVpnOn = VpnController.isMasterEnabled(context)
+            if (wasVpnOn) {
+                VpnController.pauseForBulk(context)
+                delay(400)
+            }
+
+            // Satu operasi batch untuk semua uid (tanpa rebuild per aplikasi).
+            VpnRulesRepository.setModeForUids(context, targets.map { it.uid }.distinct(), mode)
+
+            // Jika VPN mati sejak awal, biarkan tetap mati.
+            if (wasVpnOn) {
+                delay(200)
+                VpnController.resumeAfterBulk(context)
+            }
+
             withContext(Dispatchers.Main) {
                 _state.value = if (isSystemTab) {
                     _state.value.copy(
                         systemApps = _state.value.systemApps.map { it.copy(networkAccessMode = mode) },
-                        isBulkNetworkBusy = false
+                        isBulkNetworkBusy = false,
+                        isVpnActive = VpnController.isMasterEnabled(context)
                     )
                 } else {
                     _state.value.copy(
                         userApps = _state.value.userApps.map { it.copy(networkAccessMode = mode) },
-                        isBulkNetworkBusy = false
+                        isBulkNetworkBusy = false,
+                        isVpnActive = VpnController.isMasterEnabled(context)
                     )
                 }
             }

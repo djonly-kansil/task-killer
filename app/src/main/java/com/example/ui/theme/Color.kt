@@ -26,3 +26,12 @@ val GeometricDeny = Color(0xFFFF453A)        // Merah terang: izin mati
 val GeometricLocked = Color(0xFFFF1F1F)      // Merah terang: izin terkunci (tak bisa diubah)
 val GeometricNeutral = Color(0xFF3A3A4E)     // Tombol netral (Hentikan)
 
+
+// ---- Tema terang ----
+val GeometricBackgroundLight = Color(0xFFF6F5FA)
+val GeometricSurfaceLight = Color(0xFFFFFFFF)
+val GeometricSurfaceVariantLight = Color(0xFFEDEBF5)
+val GeometricOutlineLight = Color(0xFFDDDAE8)
+val GeometricPrimaryLight = Color(0xFF6250E0)
+val GeometricOnBackgroundLight = Color(0xFF16162A)
+val GeometricOnSurfaceVariantLight = Color(0xFF6B6B84)
