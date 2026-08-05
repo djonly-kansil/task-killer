@@ -6,14 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.example.ui.theme.MyApplicationTheme
-
 import rikka.shizuku.Shizuku
 
 class MainActivity : ComponentActivity() {
@@ -55,37 +48,10 @@ class MainActivity : ComponentActivity() {
         viewModel.loadData(this)
 
         setContent {
-            var settings by remember { mutableStateOf(SettingsRepository.load(this)) }
-            var showSettings by remember { mutableStateOf(false) }
-
-            val darkTheme = when (settings.themeMode) {
-                ThemeMode.DARK -> true
-                ThemeMode.LIGHT -> false
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-            }
-
-            MyApplicationTheme(darkTheme = darkTheme) {
-                CompositionLocalProvider(LocalStrings provides stringsFor(settings.language)) {
-                    if (showSettings) {
-                        SettingsScreen(
-                            settings = settings,
-                            onThemeChange = { mode ->
-                                settings = settings.copy(themeMode = mode)
-                                SettingsRepository.saveTheme(this, mode)
-                            },
-                            onLanguageChange = { lang ->
-                                settings = settings.copy(language = lang)
-                                SettingsRepository.saveLanguage(this, lang)
-                            },
-                            onBack = { showSettings = false }
-                        )
-                    } else {
-                        AppManagerScreen(viewModel, onOpenSettings = { showSettings = true })
-                    }
-                }
+            MyApplicationTheme {
+                AppManagerScreen(viewModel)
             }
         }
-
     }
 
     override fun onDestroy() {

@@ -1,13 +1,11 @@
 package com.example.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val GeometricDarkScheme = darkColorScheme(
+private val GeometricColorScheme = darkColorScheme(
     primary = GeometricPrimary,
     onPrimary = Color.White,
     background = GeometricBackground,
@@ -22,28 +20,13 @@ private val GeometricDarkScheme = darkColorScheme(
     outlineVariant = GeometricOutline
 )
 
-private val GeometricLightScheme = lightColorScheme(
-    primary = GeometricPrimaryLight,
-    onPrimary = Color.White,
-    background = GeometricBackgroundLight,
-    surface = GeometricSurfaceLight,
-    surfaceVariant = GeometricSurfaceVariantLight,
-    onBackground = GeometricOnBackgroundLight,
-    onSurface = GeometricOnBackgroundLight,
-    onSurfaceVariant = GeometricOnSurfaceVariantLight,
-    error = GeometricError,
-    onError = GeometricOnError,
-    outline = GeometricOutlineLight,
-    outlineVariant = GeometricOutlineLight
-)
-
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
-    content: @Composable () -> Unit,
+  darkTheme: Boolean = true,
+  dynamicColor: Boolean = false,
+  content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (darkTheme) GeometricDarkScheme else GeometricLightScheme
+  val colorScheme = GeometricColorScheme
 
-    MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }

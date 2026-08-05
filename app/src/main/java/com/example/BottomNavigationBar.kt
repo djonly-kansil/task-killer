@@ -25,7 +25,6 @@ fun CustomBottomNavigationBar(
     selectedIndex: Int,
     onSelect: (Int) -> Unit
 ) {
-    val s = LocalStrings.current
     Surface(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         shape = RoundedCornerShape(24.dp),
@@ -37,9 +36,9 @@ fun CustomBottomNavigationBar(
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            BottomNavItem(icon = Icons.Default.Apps, label = s.tabApps, isSelected = selectedIndex == 0, onClick = { onSelect(0) })
-            BottomNavItem(icon = Icons.Default.Security, label = s.tabSystem, isSelected = selectedIndex == 1, onClick = { onSelect(1) })
-            BottomNavItem(icon = Icons.Default.Info, label = s.tabAbout, isSelected = selectedIndex == 2, onClick = { onSelect(2) })
+            BottomNavItem(icon = Icons.Default.Apps, label = "Apps", isSelected = selectedIndex == 0, onClick = { onSelect(0) })
+            BottomNavItem(icon = Icons.Default.Security, label = "System", isSelected = selectedIndex == 1, onClick = { onSelect(1) })
+            BottomNavItem(icon = Icons.Default.Info, label = "About", isSelected = selectedIndex == 2, onClick = { onSelect(2) })
         }
     }
 }

@@ -50,21 +50,4 @@ object VpnRulesRepository {
         // atau mematikan VPN (itu hak eksklusif master switch).
         LocalVpnService.reloadRules(context)
     }
-
-    /**
-     * Menulis satu mode untuk BANYAK uid dalam satu operasi.
-     * Sengaja TIDAK memanggil reloadRules: pemanggil (pengaturan semua app)
-     * yang bertanggung jawab membangun tunnel satu kali setelah selesai.
-     */
-    fun setModeForUids(context: Context, uids: Collection<Int>, mode: NetworkAccessMode) {
-        val editor = prefs(context).edit()
-        uids.forEach { uid ->
-            if (mode == NetworkAccessMode.ALL) {
-                editor.remove(uid.toString())
-            } else {
-                editor.putString(uid.toString(), mode.name)
-            }
-        }
-        editor.commit()
-    }
 }

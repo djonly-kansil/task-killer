@@ -184,7 +184,7 @@ object ShizukuController {
             val key = "appop:$op"
             result[key] = AppPermission(
                 name = op,
-                label = prettyLabel(op),
+                label = op.replace('_', ' '),
                 isGranted = mode == "allow" || mode == "foreground",
                 kind = PermissionKind.APPOPS,
                 isProtected = false
@@ -197,7 +197,7 @@ object ShizukuController {
             if (!result.containsKey(key)) {
                 result[key] = AppPermission(
                     name = op,
-                    label = prettyLabel(op),
+                    label = op.replace('_', ' '),
                     isGranted = false,
                     kind = PermissionKind.APPOPS,
                     isProtected = false
@@ -211,16 +211,7 @@ object ShizukuController {
     }
 
     private fun shortPermissionLabel(name: String): String =
-        prettyLabel(name.substringAfterLast('.'))
-
-    /** "READ_EXTERNAL_STORAGE" -> "Read External Storage" */
-    fun prettyLabel(raw: String): String =
-        raw.split('_', ' ')
-            .filter { it.isNotBlank() }
-            .joinToString(" ") { word ->
-                word.lowercase().replaceFirstChar { it.uppercase() }
-            }
-            .ifBlank { raw }
+        name.substringAfterLast('.').replace('_', ' ')
 
     /** Cek apakah sebuah izin/appop sekarang aktif. */
     private fun isPermissionGranted(packageName: String, permission: String, kind: PermissionKind): Boolean? {
