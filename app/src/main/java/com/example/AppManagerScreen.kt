@@ -475,7 +475,7 @@ private fun LegendDot(color: Color, text: String) {
 @Composable
 private fun PermissionRow(perm: AppPermission, isBusy: Boolean, onToggle: () -> Unit) {
     val locked = perm.isProtected
-    val labelColor = if (locked) GeometricLocked else GeometricAllow
+    val labelColor = MaterialTheme.colorScheme.onBackground
     val stateColor = if (perm.isGranted) GeometricAllow else GeometricDeny
     val stateText = when {
         perm.kind == PermissionKind.APPOPS -> if (perm.isGranted) "ALLOW" else "IGNORE"
