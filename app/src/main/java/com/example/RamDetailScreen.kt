@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,11 @@ fun RamDetailScreen(
     onSelectApp: (RunningAppRam?) -> Unit,
     onForceStop: (RunningAppRam) -> Unit
 ) {
+    // Tombol/gesture kembali sistem: tutup dialog dulu bila terbuka, jika tidak kembali ke halaman utama.
+    BackHandler(enabled = true) {
+        if (state.ramDetailTarget != null) onSelectApp(null) else onBack()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

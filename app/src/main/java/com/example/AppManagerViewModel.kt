@@ -138,6 +138,10 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(appFilter = filter)
     }
 
+    fun setSearchQuery(query: String) {
+        _state.value = _state.value.copy(searchQuery = query)
+    }
+
     fun visibleApps(source: List<AppInfo>): List<AppInfo> {
         val s = _state.value
         val filtered = when (s.appFilter) {
@@ -145,12 +149,16 @@ class AppManagerViewModel : ViewModel() {
             AppFilter.RUNNING -> source.filter { it.isRunning }
             AppFilter.NETWORK_BLOCKED -> source.filter { it.networkAccessMode != NetworkAccessMode.ALL }
         }
+        val query = s.searchQuery.trim().lowercase()
+        val searched = if (query.isEmpty()) filtered else filtered.filter {
+            it.appName.lowercase().contains(query) || it.packageName.lowercase().contains(query)
+        }
         return when (s.sortMode) {
-            SortMode.NAME_ASC -> filtered.sortedBy { it.appName.lowercase() }
-            SortMode.NAME_DESC -> filtered.sortedByDescending { it.appName.lowercase() }
-            SortMode.INSTALL_NEW -> filtered.sortedByDescending { it.installTime }
-            SortMode.INSTALL_OLD -> filtered.sortedBy { it.installTime }
-            SortMode.RUNNING_FIRST -> filtered.sortedWith(
+            SortMode.NAME_ASC -> searched.sortedBy { it.appName.lowercase() }
+            SortMode.NAME_DESC -> searched.sortedByDescending { it.appName.lowercase() }
+            SortMode.INSTALL_NEW -> searched.sortedByDescending { it.installTime }
+            SortMode.INSTALL_OLD -> searched.sortedBy { it.installTime }
+            SortMode.RUNNING_FIRST -> searched.sortedWith(
                 compareByDescending<AppInfo> { it.isRunning }.thenBy { it.appName.lowercase() }
             )
         }

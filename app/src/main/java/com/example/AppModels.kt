@@ -82,6 +82,8 @@ data class AppManagerState(
     val sortMode: SortMode = SortMode.NAME_ASC,
     val appFilter: AppFilter = AppFilter.ALL,
     val showSortSheet: Boolean = false,
+    // Pencarian aplikasi
+    val searchQuery: String = "",
     // Jaringan massal
     val showBulkNetworkSheet: Boolean = false,
     val isBulkNetworkBusy: Boolean = false,

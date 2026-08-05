@@ -52,7 +52,32 @@ data class Strings(
     val languageIndonesian: String,
     val languageEnglish: String,
     val openSystemAppInfo: String,
-    val back: String
+    val back: String,
+    val generalSection: String,
+    val otherSection: String,
+    // Pencarian aplikasi
+    val searchApps: String,
+    val noMatchApps: String,
+    val clearSearch: String,
+    // Info aplikasi
+    val appInfoTitle: String,
+    val labelPackage: String,
+    val labelUid: String,
+    val labelVersion: String,
+    val labelInstalled: String,
+    val labelUpdated: String,
+    val labelSdk: String,
+    val labelType: String,
+    val labelNetwork: String,
+    val labelRunning: String,
+    val typeUserApp: String,
+    val typeSystemApp: String,
+    val runningYes: String,
+    val runningNo: String,
+    val copyAction: String,
+    val copiedAction: String,
+    val systemInfoAction: String,
+    val activeLabel: String
 )
 
 val IndonesianStrings = Strings(
@@ -96,7 +121,30 @@ val IndonesianStrings = Strings(
     languageIndonesian = "Indonesia",
     languageEnglish = "English",
     openSystemAppInfo = "Buka info aplikasi di sistem",
-    back = "Kembali"
+    back = "Kembali",
+    generalSection = "Umum",
+    otherSection = "Lainnya",
+    searchApps = "Cari aplikasi atau package",
+    noMatchApps = "Tidak ada aplikasi yang cocok.",
+    clearSearch = "Hapus pencarian",
+    appInfoTitle = "Info Aplikasi",
+    labelPackage = "Nama package",
+    labelUid = "UID",
+    labelVersion = "Versi",
+    labelInstalled = "Tanggal instal",
+    labelUpdated = "Terakhir diperbarui",
+    labelSdk = "Target / Min SDK",
+    labelType = "Jenis aplikasi",
+    labelNetwork = "Akses jaringan",
+    labelRunning = "Status",
+    typeUserApp = "Aplikasi pengguna",
+    typeSystemApp = "Aplikasi sistem",
+    runningYes = "Sedang berjalan",
+    runningNo = "Tidak berjalan",
+    copyAction = "Salin",
+    copiedAction = "Disalin",
+    systemInfoAction = "Info sistem",
+    activeLabel = "AKTIF"
 )
 
 val EnglishStrings = Strings(
@@ -140,7 +188,30 @@ val EnglishStrings = Strings(
     languageIndonesian = "Indonesia",
     languageEnglish = "English",
     openSystemAppInfo = "Open app info in system settings",
-    back = "Back"
+    back = "Back",
+    generalSection = "General",
+    otherSection = "Other",
+    searchApps = "Search app or package",
+    noMatchApps = "No matching app.",
+    clearSearch = "Clear search",
+    appInfoTitle = "App Info",
+    labelPackage = "Package name",
+    labelUid = "UID",
+    labelVersion = "Version",
+    labelInstalled = "Installed on",
+    labelUpdated = "Last updated",
+    labelSdk = "Target / Min SDK",
+    labelType = "App type",
+    labelNetwork = "Network access",
+    labelRunning = "Status",
+    typeUserApp = "User app",
+    typeSystemApp = "System app",
+    runningYes = "Running",
+    runningNo = "Not running",
+    copyAction = "Copy",
+    copiedAction = "Copied",
+    systemInfoAction = "System info",
+    activeLabel = "ACTIVE"
 )
 
 fun stringsFor(language: AppLanguage): Strings =

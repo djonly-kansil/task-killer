@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
@@ -274,10 +276,25 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                     }
                 }
 
+                // Kolom pencarian aplikasi
+                if (state.currentTab != 2) {
+                    AppSearchField(
+                        query = state.searchQuery,
+                        placeholder = s.searchApps,
+                        clearLabel = s.clearSearch,
+                        onQueryChange = { viewModel.setSearchQuery(it) }
+                    )
+                }
+
                 // Judul daftar
+                val listCount = when (state.currentTab) {
+                    0 -> viewModel.visibleApps(state.userApps).size
+                    1 -> viewModel.visibleApps(state.systemApps).size
+                    else -> 0
+                }
                 val titleText = when (state.currentTab) {
-                    0 -> s.userApps
-                    1 -> s.systemApps
+                    0 -> "${s.userApps} ($listCount)"
+                    1 -> "${s.systemApps} ($listCount)"
                     else -> s.info
                 }
                 Column(modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp)) {
@@ -362,6 +379,34 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
             onDismiss = { viewModel.closePermissions() }
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppSearchField(
+    query: String,
+    placeholder: String,
+    clearLabel: String,
+    onQueryChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+        placeholder = { Text(placeholder, fontSize = 13.sp) },
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        leadingIcon = {
+            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+    )
 }
 
 @Composable
