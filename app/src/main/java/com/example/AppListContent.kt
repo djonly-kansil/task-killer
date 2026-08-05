@@ -56,7 +56,7 @@ fun AppListContent(
                 isVpnActive = isVpnActive,
                 onForceStop = { viewModel.forceStopApp(app.packageName, app.uid, context) },
                 onSelectNetworkMode = { mode -> viewModel.setAppNetworkMode(app.packageName, app.uid, mode, context) },
-                onToggleAutoBoot = { viewModel.toggleAutoBoot(app.packageName, app.isAutoBootEnabled) },
+                onOpenPermissions = { viewModel.openPermissions(app.packageName, app.appName) },
                 onInfo = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.parse("package:${app.packageName}")
@@ -75,7 +75,7 @@ fun AppItemCard(
     isVpnActive: Boolean,
     onForceStop: () -> Unit,
     onSelectNetworkMode: (NetworkAccessMode) -> Unit,
-    onToggleAutoBoot: () -> Unit,
+    onOpenPermissions: () -> Unit,
     onInfo: () -> Unit,
     onUninstall: () -> Unit
 ) {
@@ -162,24 +162,24 @@ fun AppItemCard(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // Kolom Action (Auto Boot, Kill, Info, Del)
+            // Kolom Action (Perm, Kill, Info, Del)
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // AUTO BOOT
+                    // PERMISSIONS
                     Button(
-                        onClick = onToggleAutoBoot,
+                        onClick = onOpenPermissions,
                         modifier = Modifier.height(24.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (app.isAutoBootEnabled) GeometricSuccess else Color.Gray,
+                            containerColor = GeometricSuccess,
                             contentColor = Color.White
                         ),
                         shape = CircleShape
                     ) {
-                        Text("AUTO BOOT", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        Text("PERM", fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // KILL BUTTON

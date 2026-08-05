@@ -10,6 +10,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -273,4 +275,84 @@ fun AppManagerScreen(viewModel: AppManagerViewModel) {
             }
         }
     }
+
+    if (state.permissionTargetPackage != null) {
+        PermissionsDialog(
+            appName = state.permissionTargetName ?: state.permissionTargetPackage!!,
+            packageName = state.permissionTargetPackage!!,
+            permissions = state.permissions,
+            isLoading = state.isPermissionsLoading,
+            busyPermission = state.permissionBusy,
+            onToggle = { viewModel.togglePermission(it) },
+            onDismiss = { viewModel.closePermissions() }
+        )
+    }
+}
+
+@Composable
+fun PermissionsDialog(
+    appName: String,
+    packageName: String,
+    permissions: List<AppPermission>,
+    isLoading: Boolean,
+    busyPermission: String?,
+    onToggle: (AppPermission) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("TUTUP") }
+        },
+        title = {
+            Column {
+                Text("Izin Aplikasi", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(appName, fontSize = 12.sp)
+                Text(packageName, fontSize = 10.sp, color = MaterialTheme.colorScheme.outline)
+            }
+        },
+        text = {
+            when {
+                isLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+
+                permissions.isEmpty() -> Text("Tidak ada izin yang bisa dibaca untuk aplikasi ini.", fontSize = 12.sp)
+
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    items(permissions, key = { "${it.kind}:${it.name}" }) { perm ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(perm.label, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    if (perm.kind == PermissionKind.APPOPS) "APPOPS" else "RUNTIME",
+                                    fontSize = 9.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                            if (busyPermission == perm.name) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            } else {
+                                Switch(
+                                    checked = perm.isGranted,
+                                    onCheckedChange = { onToggle(perm) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
 }

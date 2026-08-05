@@ -58,7 +58,6 @@ class AppManagerViewModel : ViewModel() {
                         icon = icon,
                         isRunning = bulk.isRunning(pkg.packageName),
                         isDataOn = !bulk.bgDataBlockedUids.contains(appInfo.uid),
-                        isAutoBootEnabled = !bulk.bootIgnoredPackages.contains(pkg.packageName),
                         uid = appInfo.uid,
                         networkAccessMode = vpnRules[appInfo.uid] ?: NetworkAccessMode.ALL
                     )
@@ -96,11 +95,10 @@ class AppManagerViewModel : ViewModel() {
     private fun AppInfo.withLiveStatus(bulk: ShizukuController.BulkState): AppInfo {
         val newIsRunning = bulk.isRunning(packageName)
         val newIsDataOn = !bulk.bgDataBlockedUids.contains(uid)
-        val newIsAutoBoot = !bulk.bootIgnoredPackages.contains(packageName)
-        return if (newIsRunning == isRunning && newIsDataOn == isDataOn && newIsAutoBoot == isAutoBootEnabled) {
+        return if (newIsRunning == isRunning && newIsDataOn == isDataOn) {
             this
         } else {
-            copy(isRunning = newIsRunning, isDataOn = newIsDataOn, isAutoBootEnabled = newIsAutoBoot)
+            copy(isRunning = newIsRunning, isDataOn = newIsDataOn)
         }
     }
 
@@ -237,26 +235,86 @@ class AppManagerViewModel : ViewModel() {
     }
 
     // ---------------------------------------------------------------------
-    // AUTO-BOOT
+    // PERMISSIONS
     // ---------------------------------------------------------------------
 
-    fun toggleAutoBoot(packageName: String, currentStatus: Boolean) {
+    fun openPermissions(packageName: String, appName: String) {
+        _state.value = _state.value.copy(
+            permissionTargetPackage = packageName,
+            permissionTargetName = appName,
+            permissions = emptyList(),
+            isPermissionsLoading = true,
+            permissionBusy = null
+        )
         viewModelScope.launch(Dispatchers.IO) {
-            val newStatus = !currentStatus
-            val (ok, detail) = ShizukuController.setAutoBootEnabled(packageName, newStatus)
-
-            withContext(Dispatchers.Main) {
-                if (!ok) {
+            if (!ShizukuController.isReady()) {
+                withContext(Dispatchers.Main) {
                     _state.value = _state.value.copy(
-                        errorMessage = "Gagal mengubah auto-boot. $detail"
+                        isPermissionsLoading = false,
+                        errorMessage = "Shizuku belum aktif atau izin belum diberikan."
+                    )
+                }
+                return@launch
+            }
+            val perms = ShizukuController.readPermissions(packageName)
+            withContext(Dispatchers.Main) {
+                if (_state.value.permissionTargetPackage == packageName) {
+                    _state.value = _state.value.copy(
+                        permissions = perms,
+                        isPermissionsLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun closePermissions() {
+        _state.value = _state.value.copy(
+            permissionTargetPackage = null,
+            permissionTargetName = null,
+            permissions = emptyList(),
+            isPermissionsLoading = false,
+            permissionBusy = null
+        )
+    }
+
+    fun togglePermission(permission: AppPermission) {
+        val pkg = _state.value.permissionTargetPackage ?: return
+        if (permission.isProtected) {
+            _state.value = _state.value.copy(
+                errorMessage = "Izin dilindungi: ${permission.label} tidak bisa diubah."
+            )
+            return
+        }
+        val target = !permission.isGranted
+        _state.value = _state.value.copy(permissionBusy = permission.name)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val (ok, detail) = ShizukuController.setPermission(
+                pkg, permission.name, permission.kind, target
+            )
+            withContext(Dispatchers.Main) {
+                if (_state.value.permissionTargetPackage != pkg) return@withContext
+                _state.value = if (ok) {
+                    _state.value.copy(
+                        permissionBusy = null,
+                        permissions = _state.value.permissions.map {
+                            if (it.name == permission.name && it.kind == permission.kind) {
+                                it.copy(isGranted = target)
+                            } else it
+                        }
                     )
                 } else {
-                    updateAppAutoBootState(packageName, newStatus)
-                    if (detail.startsWith("Paksa")) {
-                        _state.value = _state.value.copy(
-                            errorMessage = "Auto-boot ${if (newStatus) "diaktifkan" else "dimatikan"} secara paksa (pm disable-user pada BootReceiver)."
-                        )
-                    }
+                    // biarkan switch kembali ke posisi semula + notif
+                    _state.value.copy(
+                        permissionBusy = null,
+                        permissions = _state.value.permissions.map {
+                            if (it.name == permission.name && it.kind == permission.kind) {
+                                it.copy(isGranted = permission.isGranted, isProtected = true)
+                            } else it
+                        },
+                        errorMessage = detail
+                    )
                 }
             }
         }
@@ -285,13 +343,6 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(
             userApps = _state.value.userApps.map { if (it.packageName == packageName) it.copy(isDataOn = isDataOn) else it },
             systemApps = _state.value.systemApps.map { if (it.packageName == packageName) it.copy(isDataOn = isDataOn) else it }
-        )
-    }
-
-    private fun updateAppAutoBootState(packageName: String, isAutoBootEnabled: Boolean) {
-        _state.value = _state.value.copy(
-            userApps = _state.value.userApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it },
-            systemApps = _state.value.systemApps.map { if (it.packageName == packageName) it.copy(isAutoBootEnabled = isAutoBootEnabled) else it }
         )
     }
 

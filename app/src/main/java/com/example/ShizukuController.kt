@@ -8,7 +8,6 @@ object ShizukuController {
 
     data class BulkState(
         val runningPackages: Set<String> = emptySet(),
-        val bootIgnoredPackages: Set<String> = emptySet(),
         val bgDataBlockedUids: Set<Int> = emptySet()
     ) {
         fun isRunning(packageName: String): Boolean =
@@ -86,24 +85,16 @@ object ShizukuController {
 
         val output = executeWithOutput(
             "ps -A -o NAME; " +
-                "echo '---BOOT_IGNORE---'; " +
-                "cmd appops query-op BOOT_COMPLETED ignore; " +
                 "echo '---NETPOLICY---'; " +
                 "dumpsys netpolicy"
         )
 
-        val psPart = output.substringBefore("---BOOT_IGNORE---")
-        val bootPart = output.substringAfter("---BOOT_IGNORE---").substringBefore("---NETPOLICY---")
+        val psPart = output.substringBefore("---NETPOLICY---")
         val netPart = output.substringAfter("---NETPOLICY---")
 
         val runningPackages = psPart.lineSequence()
             .map { it.trim() }
             .filter { it.isNotEmpty() && it != "NAME" }
-            .toSet()
-
-        val bootIgnoredPackages = bootPart.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.contains(" ") }
             .toSet()
 
         val uidPolicyRegex = Regex("""UID=(\d+)\s+policy=(\S+)""")
@@ -112,81 +103,213 @@ object ShizukuController {
             .mapNotNull { it.groupValues[1].toIntOrNull() }
             .toSet()
 
-        return BulkState(runningPackages, bootIgnoredPackages, bgDataBlockedUids)
+        return BulkState(runningPackages, bgDataBlockedUids)
     }
 
     // ---------------------------------------------------------------------
-    // AUTO-BOOT
+    // PERMISSIONS
     // ---------------------------------------------------------------------
+
+    /** Appops penting yang tidak muncul sebagai runtime permission biasa. */
+    private val EXTRA_APPOPS = listOf(
+        "MANAGE_EXTERNAL_STORAGE",
+        "SYSTEM_ALERT_WINDOW",
+        "WRITE_SETTINGS",
+        "REQUEST_INSTALL_PACKAGES",
+        "RUN_IN_BACKGROUND",
+        "RUN_ANY_IN_BACKGROUND",
+        "START_FOREGROUND",
+        "GET_USAGE_STATS",
+        "SCHEDULE_EXACT_ALARM",
+        "PICTURE_IN_PICTURE"
+    )
 
     /**
-     * Mengatur auto-boot dengan rantai paksa:
-     * 1. `cmd appops set --user 0 <pkg> BOOT_COMPLETED allow|ignore`
-     * 2. `appops set` (tanpa --user, ROM lama)
-     * 3. `pm disable-user/enable --user 0 <pkg>/<BootReceiver>` untuk setiap receiver
-     *    yang mendengarkan BOOT_COMPLETED / QUICKBOOT / LOCKED_BOOT_COMPLETED.
-     *
-     * @return Pair(berhasil, detail langkah yang dipakai / alasan gagal)
+     * Membaca daftar izin sebuah paket:
+     * - runtime permission lewat `dumpsys package <pkg>` (baris `...: granted=true/false`)
+     * - install permission (tidak bisa diubah) ditandai protected
+     * - appops lewat `cmd appops get <pkg>`
      */
-    fun setAutoBootEnabled(packageName: String, enable: Boolean): Pair<Boolean, String> {
+    fun readPermissions(packageName: String): List<AppPermission> {
+        if (!isReady()) return emptyList()
+
+        val out = executeWithOutput(
+            "dumpsys package $packageName; " +
+                "echo '---APPOPS---'; cmd appops get $packageName"
+        )
+        val dumpPart = out.substringBefore("---APPOPS---")
+        val appopsPart = out.substringAfter("---APPOPS---")
+
+        val result = linkedMapOf<String, AppPermission>()
+
+        // 1. runtime permissions: "android.permission.CAMERA: granted=true, flags=[ ... ]"
+        val grantedRegex = Regex("""^\s*([A-Za-z0-9_.]+\.permission\.[A-Za-z0-9_.]+):\s*granted=(true|false)(.*)$""")
+        dumpPart.lineSequence().forEach { line ->
+            val m = grantedRegex.find(line) ?: return@forEach
+            val name = m.groupValues[1]
+            val granted = m.groupValues[2] == "true"
+            val flags = m.groupValues[3]
+            val protectedByFlag = flags.contains("SYSTEM_FIXED", true) || flags.contains("POLICY_FIXED", true)
+            result[name] = AppPermission(
+                name = name,
+                label = shortPermissionLabel(name),
+                isGranted = granted,
+                kind = PermissionKind.RUNTIME,
+                isProtected = protectedByFlag
+            )
+        }
+
+        // 2. install permissions (declared tapi tidak runtime) -> protected
+        val installSection = dumpPart.substringAfter("install permissions:", "").substringBefore("runtime permissions:")
+        Regex("""([A-Za-z0-9_.]+\.permission\.[A-Za-z0-9_.]+):\s*granted=(true|false)""")
+            .findAll(installSection)
+            .forEach { m ->
+                val name = m.groupValues[1]
+                if (result.containsKey(name)) return@forEach
+                result[name] = AppPermission(
+                    name = name,
+                    label = shortPermissionLabel(name),
+                    isGranted = m.groupValues[2] == "true",
+                    kind = PermissionKind.RUNTIME,
+                    isProtected = true
+                )
+            }
+
+        // 3. appops: "      MANAGE_EXTERNAL_STORAGE: allow; time=..."
+        val opRegex = Regex("""^\s*([A-Z_0-9]{3,}):\s*(allow|ignore|deny|default|foreground)""")
+        appopsPart.lineSequence().forEach { line ->
+            val m = opRegex.find(line) ?: return@forEach
+            val op = m.groupValues[1]
+            val mode = m.groupValues[2]
+            val key = "appop:$op"
+            result[key] = AppPermission(
+                name = op,
+                label = op.replace('_', ' '),
+                isGranted = mode == "allow" || mode == "foreground",
+                kind = PermissionKind.APPOPS,
+                isProtected = false
+            )
+        }
+
+        // 4. appops penting yang belum tampil -> tampilkan sebagai default/off
+        EXTRA_APPOPS.forEach { op ->
+            val key = "appop:$op"
+            if (!result.containsKey(key)) {
+                result[key] = AppPermission(
+                    name = op,
+                    label = op.replace('_', ' '),
+                    isGranted = false,
+                    kind = PermissionKind.APPOPS,
+                    isProtected = false
+                )
+            }
+        }
+
+        return result.values.sortedWith(
+            compareBy({ it.kind.ordinal }, { it.label.lowercase() })
+        )
+    }
+
+    private fun shortPermissionLabel(name: String): String =
+        name.substringAfterLast('.').replace('_', ' ')
+
+    /** Cek apakah sebuah izin/appop sekarang aktif. */
+    private fun isPermissionGranted(packageName: String, permission: String, kind: PermissionKind): Boolean? {
+        return when (kind) {
+            PermissionKind.RUNTIME -> {
+                val out = executeWithOutput("dumpsys package $packageName | grep -i \"$permission\"")
+                when {
+                    out.contains("granted=true") -> true
+                    out.contains("granted=false") -> false
+                    else -> null
+                }
+            }
+            PermissionKind.APPOPS -> {
+                val out = executeWithOutput("cmd appops get $packageName $permission")
+                when {
+                    out.contains("allow", true) || out.contains("foreground", true) -> true
+                    out.contains("ignore", true) || out.contains("deny", true) ||
+                        out.contains("default", true) -> false
+                    else -> null
+                }
+            }
+        }
+    }
+
+    private fun looksProtected(output: String): Boolean {
+        val lower = output.lowercase()
+        return lower.contains("not a changeable permission") ||
+            lower.contains("is not a runtime permission") ||
+            lower.contains("securityexception") ||
+            lower.contains("operation not allowed") ||
+            lower.contains("system fixed") ||
+            lower.contains("policy fixed") ||
+            lower.contains("permission denial") ||
+            lower.contains("not allowed to change")
+    }
+
+    /**
+     * Mengubah satu izin. Mengembalikan Pair(berhasil, detail).
+     * Jika perintah ditolak atau status tidak berubah -> berhasil=false dengan
+     * detail "Izin dilindungi".
+     */
+    fun setPermission(
+        packageName: String,
+        permission: String,
+        kind: PermissionKind,
+        grant: Boolean
+    ): Pair<Boolean, String> {
         if (!isReady()) return false to "Shizuku belum aktif atau izin belum diberikan."
 
-        val mode = if (enable) "allow" else "ignore"
-
-        val a = run("cmd appops set --user 0 $packageName BOOT_COMPLETED $mode")
-        if (a.ok) return true to "appops BOOT_COMPLETED=$mode"
-
-        val b = run("appops set $packageName BOOT_COMPLETED $mode")
-        if (b.ok) return true to "appops (legacy) BOOT_COMPLETED=$mode"
-
-        // Fallback paksa: enable/disable komponen BootReceiver-nya langsung.
-        val receivers = findBootReceivers(packageName)
-        if (receivers.isEmpty()) {
-            return false to "appops ditolak & tidak ada boot receiver yang bisa dimatikan. ${a.output.trim().take(160)}"
-        }
-
-        var changed = 0
-        val failed = mutableListOf<String>()
-        receivers.forEach { component ->
-            val cmd = if (enable) {
-                "pm enable --user 0 $component"
+        val commands = when (kind) {
+            PermissionKind.RUNTIME -> if (grant) {
+                listOf(
+                    "pm grant --user 0 $packageName $permission",
+                    "pm grant $packageName $permission"
+                )
             } else {
-                "pm disable-user --user 0 $component"
+                listOf(
+                    "pm revoke --user 0 $packageName $permission",
+                    "pm revoke $packageName $permission"
+                )
             }
+            PermissionKind.APPOPS -> {
+                val mode = if (grant) "allow" else "ignore"
+                listOf(
+                    "cmd appops set --user 0 $packageName $permission $mode",
+                    "appops set $packageName $permission $mode"
+                )
+            }
+        }
+
+        var lastOutput = ""
+        var protectedHit = false
+        for (cmd in commands) {
             val r = run(cmd)
-            if (r.ok) changed++ else failed.add(component.substringAfterLast('/'))
-        }
-
-        return if (changed > 0) {
-            true to "Paksa via pm ${if (enable) "enable" else "disable-user"} pada $changed receiver."
-        } else {
-            false to "Gagal: appops ditolak dan pm disable-user gagal (${failed.joinToString()})."
-        }
-    }
-
-    /** Mencari komponen receiver boot milik sebuah paket. */
-    private fun findBootReceivers(packageName: String): List<String> {
-        val actions = listOf(
-            "android.intent.action.BOOT_COMPLETED",
-            "android.intent.action.LOCKED_BOOT_COMPLETED",
-            "android.intent.action.QUICKBOOT_POWERON"
-        )
-        val result = linkedSetOf<String>()
-        actions.forEach { action ->
-            val out = executeWithOutput("pm query-receivers --user 0 --components -a $action | grep $packageName")
-            out.lineSequence()
-                .map { it.trim() }
-                .filter { it.startsWith("$packageName/") }
-                .forEach { result.add(it) }
-
-            if (result.isEmpty()) {
-                // ROM tanpa --components: parse format "name=pkg/.Receiver"
-                val out2 = executeWithOutput("pm query-receivers --user 0 -a $action | grep -i $packageName")
-                Regex("""$packageName/[A-Za-z0-9_.$]+""").findAll(out2).forEach { result.add(it.value) }
+            lastOutput = r.output
+            if (looksProtected(r.output)) protectedHit = true
+            if (r.ok) {
+                // verifikasi ulang: status harus benar-benar berubah
+                val now = isPermissionGranted(packageName, permission, kind)
+                if (now == null || now == grant) {
+                    return true to "OK"
+                }
             }
         }
-        return result.toList()
+
+        // masih mungkin berubah walau output aneh
+        val now = isPermissionGranted(packageName, permission, kind)
+        if (now == grant) return true to "OK"
+
+        val reason = when {
+            protectedHit -> "dilindungi sistem (signature/system-fixed/policy)"
+            lastOutput.isBlank() -> "perintah tidak menghasilkan perubahan"
+            else -> lastOutput.trim().lines().firstOrNull()?.take(120) ?: "tidak diketahui"
+        }
+        return false to "Izin dilindungi: $permission ($reason)"
     }
+
+
 
     // ---------------------------------------------------------------------
     // FORCE STOP / KILL
