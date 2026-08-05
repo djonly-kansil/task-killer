@@ -10,10 +10,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Lock
@@ -446,16 +446,21 @@ fun PermissionsDialog(
 
                 permissions.isEmpty() -> Text("Tidak ada izin yang bisa dibaca untuk aplikasi ini.", fontSize = 12.sp)
 
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                else -> Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(permissions, key = { "${it.kind}:${it.name}" }) { perm ->
-                        PermissionRow(
-                            perm = perm,
-                            isBusy = busyPermission == perm.name,
-                            onToggle = { onToggle(perm) }
-                        )
+                    permissions.forEach { perm ->
+                        key(perm.kind, perm.name) {
+                            PermissionRow(
+                                perm = perm,
+                                isBusy = busyPermission == perm.name,
+                                onToggle = { onToggle(perm) }
+                            )
+                        }
                     }
                 }
             }
@@ -475,7 +480,7 @@ private fun LegendDot(color: Color, text: String) {
 @Composable
 private fun PermissionRow(perm: AppPermission, isBusy: Boolean, onToggle: () -> Unit) {
     val locked = perm.isProtected
-    val labelColor = MaterialTheme.colorScheme.onBackground
+    val labelColor = if (locked) GeometricLocked else GeometricAllow
     val stateColor = if (perm.isGranted) GeometricAllow else GeometricDeny
     val stateText = when {
         perm.kind == PermissionKind.APPOPS -> if (perm.isGranted) "ALLOW" else "IGNORE"
