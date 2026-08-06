@@ -214,7 +214,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                 // Tombol hide/show: mengubah kartu VPN & RAM menjadi mode minimalis
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
@@ -257,7 +257,10 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                 if (compactCards) {
                     // Mode minimalis: VPN di kiri, RAM di kanan
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -265,12 +268,12 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                             isVpnActive = state.isVpnActive,
                             statusText = vpnStatusText,
                             compact = true,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(0.85f).fillMaxHeight(),
                             onToggle = { onToggleVpn() }
                         )
                         RamUsageCard(
                             state = state,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1.15f).fillMaxHeight(),
                             onClick = { viewModel.openRamDetail(context) },
                             compact = true
                         )
@@ -452,6 +455,7 @@ private fun VpnStatusCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (compact) Modifier.fillMaxHeight() else Modifier)
                 .heightIn(min = if (compact) 56.dp else 44.dp)
                 .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -518,13 +522,19 @@ private fun AppSearchField(
     val interactionSource = remember { MutableInteractionSource() }
     val isFocused by interactionSource.collectIsFocusedAsState()
 
+    // Mode pencarian dianggap aktif sejak kolom mendapat fokus sampai fokus dilepas.
+    var searchActive by remember { mutableStateOf(false) }
+    LaunchedEffect(isFocused) { if (isFocused) searchActive = true }
+
     fun release() {
+        // Satu aksi: tutup keyboard, lepas fokus (kursor hilang), keluar dari mode pencarian.
         keyboardController?.hide()
         focusManager.clearFocus(force = true)
+        searchActive = false
     }
 
-    // Back dari HP: tutup keyboard DAN akhiri mode pencarian (kata kunci dikosongkan).
-    BackHandler(enabled = isFocused || query.isNotEmpty()) {
+    // Back dari HP: sekali tekan langsung keluar dari mode pencarian.
+    BackHandler(enabled = searchActive || isFocused || query.isNotEmpty()) {
         if (query.isNotEmpty()) onQueryChange("")
         release()
     }

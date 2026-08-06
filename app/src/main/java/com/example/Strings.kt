@@ -166,8 +166,8 @@ val IndonesianStrings = Strings(
     copiedAction = "Disalin",
     systemInfoAction = "Info sistem",
     activeLabel = "AKTIF",
-    compactHide = "Sembunyikan",
-    compactShow = "Tampilkan",
+    compactHide = "Versi Lite",
+    compactShow = "Versi Max",
     ramAvailable = "Tersedia",
     exitConfirm = "Tekan kembali sekali lagi untuk keluar"
 )
@@ -245,8 +245,8 @@ val EnglishStrings = Strings(
     copiedAction = "Copied",
     systemInfoAction = "System info",
     activeLabel = "ACTIVE",
-    compactHide = "Hide",
-    compactShow = "Show",
+    compactHide = "Versi Lite",
+    compactShow = "Versi Max",
     ramAvailable = "Available",
     exitConfirm = "Press back again to exit"
 )

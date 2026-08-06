@@ -50,7 +50,7 @@ fun RamUsageCard(
 
     val compactContent: @Composable () -> Unit = {
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight().heightIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(34.dp), contentAlignment = Alignment.Center) {
