@@ -402,15 +402,16 @@ private fun AppSearchField(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 2.dp)
-            .heightIn(min = 42.dp)
+            .height(38.dp)
             .focusRequester(focusRequester),
-        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
-        placeholder = { Text(placeholder, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+        placeholder = { Text(placeholder, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         singleLine = true,
         shape = RoundedCornerShape(50),
         interactionSource = interactionSource,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { release() }, onDone = { release() }),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = MaterialTheme.colorScheme.surface,
             unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -424,11 +425,14 @@ private fun AppSearchField(
         },
         trailingIcon = {
             if (query.isNotEmpty()) {
-                IconButton(onClick = {
-                    onQueryChange("")
-                    release()
-                }) {
-                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(16.dp))
+                IconButton(
+                    onClick = {
+                        onQueryChange("")
+                        release()
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(14.dp))
                 }
             }
         }
@@ -707,4 +711,3 @@ private fun PermissionRow(perm: AppPermission, isBusy: Boolean, onToggle: () -> 
         }
     }
 }
-
