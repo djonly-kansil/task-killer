@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,71 +77,10 @@ fun RamDetailScreen(
         }
 
         // Info RAM tetap di bagian atas
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            "MEMORY USAGE",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
-                        )
-                        Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
-                            Text(
-                                String.format("%.1f GB", state.usedRamGb),
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                String.format("/ %.1f GB", state.totalRamGb),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 3.dp)
-                            )
-                        }
-                    }
-                    val ratio = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
-                    Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            progress = { ratio },
-                            modifier = Modifier.fillMaxSize(),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                            strokeWidth = 4.dp,
-                            strokeCap = StrokeCap.Round
-                        )
-                        Text(
-                            "${(ratio * 100).toInt()}%",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                val ratio = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
-                LinearProgressIndicator(
-                    progress = { ratio },
-                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                    strokeCap = StrokeCap.Round
-                )
-            }
-        }
+        RamUsageCard(
+            state = state,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
+        )
 
         Text(
             "Aplikasi Berjalan (${state.ramApps.size})",

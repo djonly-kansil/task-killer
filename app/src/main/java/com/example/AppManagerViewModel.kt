@@ -106,16 +106,85 @@ class AppManagerViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Membaca rincian memori di thread IO (Dispatchers.IO) lalu memperbarui state,
+     * termasuk menambah satu titik pada riwayat pemakaian RAM (maks 40 titik).
+     */
     fun updateRamInfo(context: Context) {
+        viewModelScope.launch { refreshRamInfo(context) }
+    }
+
+    suspend fun refreshRamInfo(context: Context) {
+        val snapshot = withContext(Dispatchers.IO) { readMemorySnapshot(context) }
+        val prev = _state.value
+        val ratio = if (snapshot.totalGb > 0f) (snapshot.usedGb / snapshot.totalGb).coerceIn(0f, 1f) else 0f
+        val history = (prev.ramHistory + ratio).let { if (it.size > 40) it.drop(it.size - 40) else it }
+        _state.value = prev.copy(
+            usedRamGb = snapshot.usedGb,
+            totalRamGb = snapshot.totalGb,
+            ramUserAppsGb = snapshot.userAppsGb,
+            ramCacheGb = snapshot.cacheGb,
+            ramSystemGb = snapshot.systemGb,
+            ramFreeGb = snapshot.freeGb,
+            ramHistory = history
+        )
+    }
+
+    private data class MemorySnapshot(
+        val totalGb: Float,
+        val usedGb: Float,
+        val userAppsGb: Float,
+        val cacheGb: Float,
+        val systemGb: Float,
+        val freeGb: Float
+    )
+
+    /** Rincian dari /proc/meminfo; jatuh kembali ke ActivityManager bila gagal dibaca. */
+    private fun readMemorySnapshot(context: Context): MemorySnapshot {
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memInfo = ActivityManager.MemoryInfo()
         am.getMemoryInfo(memInfo)
-        val total = memInfo.totalMem.toFloat() / (1024 * 1024 * 1024)
-        val avail = memInfo.availMem.toFloat() / (1024 * 1024 * 1024)
-        val used = total - avail
-        _state.value = _state.value.copy(
-            usedRamGb = used,
-            totalRamGb = total
+        val gb = 1024f * 1024f * 1024f
+        val fallbackTotal = memInfo.totalMem.toFloat() / gb
+        val fallbackAvail = memInfo.availMem.toFloat() / gb
+
+        val values = try {
+            java.io.File("/proc/meminfo").readLines().mapNotNull { line ->
+                val parts = line.split(":")
+                if (parts.size < 2) return@mapNotNull null
+                val kb = parts[1].trim().removeSuffix(" kB").trim().toLongOrNull() ?: return@mapNotNull null
+                parts[0].trim() to kb
+            }.toMap()
+        } catch (e: Exception) {
+            emptyMap()
+        }
+
+        fun v(key: String): Float = (values[key] ?: 0L).toFloat() / (1024f * 1024f)
+
+        val total = if (v("MemTotal") > 0f) v("MemTotal") else fallbackTotal
+        if (total <= 0f) return MemorySnapshot(0f, 0f, 0f, 0f, 0f, 0f)
+
+        val free = when {
+            v("MemAvailable") > 0f -> v("MemAvailable")
+            else -> fallbackAvail
+        }.coerceIn(0f, total)
+
+        var cache = (v("Cached") + v("Buffers") + v("SReclaimable")).coerceAtLeast(0f)
+        var system = (v("Slab") - v("SReclaimable") + v("KernelStack") + v("PageTables")).coerceAtLeast(0f)
+
+        val used = (total - free).coerceIn(0f, total)
+        // Cache yang belum dibebaskan sudah ikut dihitung di MemAvailable; batasi agar tidak melebihi "used".
+        cache = cache.coerceAtMost((used * 0.6f))
+        system = system.coerceAtMost((used - cache).coerceAtLeast(0f))
+        val userApps = (used - cache - system).coerceAtLeast(0f)
+
+        return MemorySnapshot(
+            totalGb = total,
+            usedGb = used,
+            userAppsGb = userApps,
+            cacheGb = cache,
+            systemGb = system,
+            freeGb = free
         )
     }
 
@@ -397,9 +466,9 @@ class AppManagerViewModel : ViewModel() {
         _state.value = _state.value.copy(ramDetailTarget = app)
     }
 
-    fun loadRamApps(context: Context) {
+    fun loadRamApps(context: Context, silent: Boolean = false) {
         viewModelScope.launch {
-            updateRamInfo(context)
+            refreshRamInfo(context)
             val list = withContext(Dispatchers.IO) {
                 val known = (_state.value.userApps + _state.value.systemApps)
                     .associateBy { it.packageName }
@@ -440,7 +509,10 @@ class AppManagerViewModel : ViewModel() {
                 entries.distinctBy { it.packageName }.sortedByDescending { it.ramMb }
             }
 
-            _state.value = _state.value.copy(ramApps = list, isRamLoading = false)
+            _state.value = _state.value.copy(
+                ramApps = list,
+                isRamLoading = if (silent) _state.value.isRamLoading else false
+            )
         }
     }
 

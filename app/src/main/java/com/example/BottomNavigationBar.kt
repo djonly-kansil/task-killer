@@ -52,9 +52,9 @@ fun BottomNavItem(
     onClick: () -> Unit
 ) {
     val backgroundModifier = if (isSelected) {
-        Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.background(MaterialTheme.colorScheme.primary, CircleShape).padding(horizontal = 12.dp, vertical = 7.dp)
     } else {
-        Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
     }
 
     Row(
@@ -62,9 +62,13 @@ fun BottomNavItem(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-        if (isSelected) {
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimary)
-        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

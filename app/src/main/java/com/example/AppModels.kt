@@ -67,6 +67,13 @@ data class AppManagerState(
     val systemApps: List<AppInfo> = emptyList(),
     val usedRamGb: Float = 0f,
     val totalRamGb: Float = 0f,
+    // Rincian memori (GB) hasil pembacaan /proc/meminfo
+    val ramUserAppsGb: Float = 0f,
+    val ramCacheGb: Float = 0f,
+    val ramSystemGb: Float = 0f,
+    val ramFreeGb: Float = 0f,
+    /** Riwayat rasio pemakaian RAM (0f..1f), maksimal 40 titik. */
+    val ramHistory: List<Float> = emptyList(),
     val isLoading: Boolean = true,
     val shizukuStatus: String = "Checking Shizuku...",
     val currentTab: Int = 0,

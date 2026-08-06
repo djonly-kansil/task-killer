@@ -2,6 +2,7 @@ package com.example
 
 import android.app.Activity
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -9,7 +10,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,10 +33,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,7 +90,15 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
         while (true) {
             viewModel.updateRamInfo(context)
             isTunnelActive = VpnController.isTunnelActive(context)
-            delay(1000)
+            delay(400)
+        }
+    }
+
+    // Layar detail RAM menyegarkan daftar app lebih sering, tanpa indikator loading.
+    LaunchedEffect(state.showRamDetail) {
+        while (state.showRamDetail) {
+            delay(2000)
+            viewModel.loadRamApps(context, silent = true)
         }
     }
 
@@ -123,7 +144,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 10.dp),
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -159,99 +180,67 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
 
                 }
 
-                // VPN card
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(24.dp),
+                // Baris VPN ringkas
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.Shield,
-                                    contentDescription = null,
-                                    tint = if (state.isVpnActive) GeometricSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(s.vpnFilter, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
-                            }
-                            Text(
-                                text = when {
-                                    !state.isVpnActive -> s.vpnOff
-                                    isTunnelActive -> s.vpnOnActive
-                                    else -> s.vpnOnPreparing
-                                },
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (state.isVpnActive) GeometricSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            s.vpnFilter,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = when {
+                                !state.isVpnActive -> s.vpnOff
+                                isTunnelActive -> s.vpnOnActive
+                                else -> s.vpnOnPreparing
+                            },
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
                         Switch(
                             checked = state.isVpnActive,
                             onCheckedChange = { onToggleVpn() },
+                            modifier = Modifier.scale(0.7f),
                             colors = SwitchDefaults.colors(checkedTrackColor = GeometricSuccess)
                         )
                     }
                 }
 
-                // Memory card (klik -> layar RAM detail)
-                Card(
-                    onClick = { viewModel.openRamDetail(context) },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(24.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text(s.memoryUsage, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, letterSpacing = 1.sp)
-                                Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.padding(top = 4.dp)) {
-                                    Text(String.format("%.1f GB", state.usedRamGb), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(String.format("/ %.1f GB", state.totalRamGb), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
-                                }
-                            }
-                            val ratio = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
-                            Box(modifier = Modifier.size(52.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(
-                                    progress = { ratio },
-                                    modifier = Modifier.fillMaxSize(),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                    strokeWidth = 4.dp,
-                                    strokeCap = StrokeCap.Round
-                                )
-                                Text("${(ratio * 100).toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        val progressValue = if (state.totalRamGb > 0) state.usedRamGb / state.totalRamGb else 0f
-                        LinearProgressIndicator(
-                            progress = { progressValue },
-                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                            strokeCap = StrokeCap.Round
-                        )
-                    }
-                }
+                // Kartu RAM informatif (klik -> layar RAM detail)
+                RamUsageCard(
+                    state = state,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                    onClick = { viewModel.openRamDetail(context) }
+                )
 
                 // Baris aksi cepat
                 if (state.currentTab != 2) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        QuickActionCard(
+                        QuickActionChip(
                             icon = Icons.Default.Public,
                             label = s.networkAccessAll,
                             color = GeometricAllow,
@@ -259,14 +248,14 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                             enabled = !state.isBulkNetworkBusy,
                             onClick = { viewModel.openBulkNetworkSheet() }
                         )
-                        QuickActionCard(
+                        QuickActionChip(
                             icon = Icons.Default.Stop,
                             label = s.killAll,
                             color = GeometricDeny,
                             modifier = Modifier.weight(1f),
                             onClick = { viewModel.killAllUserApps(context) }
                         )
-                        QuickActionCard(
+                        QuickActionChip(
                             icon = Icons.Default.FilterList,
                             label = s.filterAndSort,
                             color = MaterialTheme.colorScheme.primary,
@@ -297,7 +286,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                     1 -> "${s.systemApps} ($listCount)"
                     else -> s.info
                 }
-                Column(modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp)) {
+                Column(modifier = Modifier.padding(start = 20.dp, top = 6.dp, bottom = 6.dp)) {
                     Text(titleText, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                     Box(
                         modifier = Modifier
@@ -308,10 +297,15 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
                     )
                 }
 
+                val listFocusManager = LocalFocusManager.current
                 PullToRefreshBox(
                     isRefreshing = state.isLoading,
                     onRefresh = { viewModel.loadData(context) },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = { listFocusManager.clearFocus(force = true) })
+                        }
                 ) {
                     if (state.isLoading) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -381,7 +375,6 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppSearchField(
     query: String,
@@ -389,20 +382,53 @@ private fun AppSearchField(
     clearLabel: String,
     onQueryChange: (String) -> Unit
 ) {
-    OutlinedTextField(
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isFocused by interactionSource.collectIsFocusedAsState()
+
+    fun release() {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+    }
+
+    // Tombol/gesture kembali saat kolom fokus: lepas fokus dulu, jangan keluar app.
+    BackHandler(enabled = isFocused) { release() }
+
+    TextField(
         value = query,
         onValueChange = onQueryChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-        placeholder = { Text(placeholder, fontSize = 13.sp) },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 2.dp)
+            .heightIn(min = 42.dp)
+            .focusRequester(focusRequester),
+        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+        placeholder = { Text(placeholder, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(50),
+        interactionSource = interactionSource,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { release() }, onDone = { release() }),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+            disabledContainerColor = MaterialTheme.colorScheme.surface,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent
+        ),
         leadingIcon = {
-            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
         },
         trailingIcon = {
             if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(18.dp))
+                IconButton(onClick = {
+                    onQueryChange("")
+                    release()
+                }) {
+                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -410,7 +436,7 @@ private fun AppSearchField(
 }
 
 @Composable
-private fun QuickActionCard(
+private fun QuickActionChip(
     icon: ImageVector,
     label: String,
     color: Color,
@@ -421,29 +447,24 @@ private fun QuickActionCard(
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        modifier = modifier.height(74.dp)
+        shape = RoundedCornerShape(50),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+        modifier = modifier.height(38.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier.size(28.dp).background(color.copy(alpha = 0.14f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(15.dp))
-            }
-            Spacer(modifier = Modifier.height(6.dp))
+            Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(14.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Text(
                 label,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = color,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
