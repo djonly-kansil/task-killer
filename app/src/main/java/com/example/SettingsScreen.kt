@@ -58,7 +58,7 @@ fun SettingsScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 8.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
+                .padding(start = 12.dp, end = 20.dp, top = 16.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {

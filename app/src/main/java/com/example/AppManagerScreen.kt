@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
@@ -53,6 +55,7 @@ import com.example.ui.theme.GeometricDeny
 import com.example.ui.theme.GeometricLocked
 import com.example.ui.theme.GeometricSuccess
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.VisualTransformation
@@ -65,8 +68,33 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
     val s = LocalStrings.current
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var isTunnelActive by remember { mutableStateOf(false) }
+
+    // Mode kartu minimalis (VPN + RAM berbagi satu baris), tersimpan antar sesi.
+    var compactCards by remember { mutableStateOf(SettingsRepository.loadCompactCards(context)) }
+
+    // Konfirmasi keluar: back pertama menampilkan peringatan, back kedua keluar.
+    var lastBackPressAt by remember { mutableStateOf(0L) }
+    val activity = context as? Activity
+    val noOverlayOpen = !state.showRamDetail &&
+        state.permissionTargetPackage == null &&
+        !state.showSortSheet &&
+        !state.showBulkNetworkSheet &&
+        !state.showVpnHint
+    BackHandler(enabled = noOverlayOpen) {
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressAt < 2000L) {
+            activity?.finish()
+        } else {
+            lastBackPressAt = now
+            scope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(s.exitConfirm)
+            }
+        }
+    }
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -183,59 +211,86 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
 
                 }
 
-                // Baris VPN ringkas
-                Surface(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                // Tombol hide/show: mengubah kartu VPN & RAM menjadi mode minimalis
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 14.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        onClick = {
+                            compactCards = !compactCards
+                            SettingsRepository.saveCompactCards(context, compactCards)
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        modifier = Modifier.height(26.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = if (state.isVpnActive) GeometricSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            s.vpnFilter,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = when {
-                                !state.isVpnActive -> s.vpnOff
-                                isTunnelActive -> s.vpnOnActive
-                                else -> s.vpnOnPreparing
-                            },
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = state.isVpnActive,
-                            onCheckedChange = { onToggleVpn() },
-                            modifier = Modifier.scale(0.7f),
-                            colors = SwitchDefaults.colors(checkedTrackColor = GeometricSuccess)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxHeight().padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (compactCards) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                if (compactCards) s.compactShow else s.compactHide,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
-                // Kartu RAM informatif (klik -> layar RAM detail)
-                RamUsageCard(
-                    state = state,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
-                    onClick = { viewModel.openRamDetail(context) }
-                )
+                val vpnStatusText = when {
+                    !state.isVpnActive -> s.vpnOff
+                    isTunnelActive -> s.vpnOnActive
+                    else -> s.vpnOnPreparing
+                }
+
+                if (compactCards) {
+                    // Mode minimalis: VPN di kiri, RAM di kanan
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        VpnStatusCard(
+                            isVpnActive = state.isVpnActive,
+                            statusText = vpnStatusText,
+                            compact = true,
+                            modifier = Modifier.weight(1f),
+                            onToggle = { onToggleVpn() }
+                        )
+                        RamUsageCard(
+                            state = state,
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.openRamDetail(context) },
+                            compact = true
+                        )
+                    }
+                } else {
+                    VpnStatusCard(
+                        isVpnActive = state.isVpnActive,
+                        statusText = vpnStatusText,
+                        compact = false,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        onToggle = { onToggleVpn() }
+                    )
+
+                    // Kartu RAM informatif (klik -> layar RAM detail)
+                    RamUsageCard(
+                        state = state,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                        onClick = { viewModel.openRamDetail(context) }
+                    )
+                }
 
                 // Baris aksi cepat
                 if (state.currentTab != 2) {
@@ -378,6 +433,77 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
     }
 }
 
+/** Kartu VPN: versi penuh (dengan teks status) dan versi minimalis. */
+@Composable
+private fun VpnStatusCard(
+    isVpnActive: Boolean,
+    statusText: String,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit
+) {
+    val s = LocalStrings.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(if (compact) 18.dp else 22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = if (compact) 56.dp else 44.dp)
+                .padding(horizontal = if (compact) 10.dp else 14.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Shield,
+                contentDescription = null,
+                tint = if (isVpnActive) GeometricSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(if (compact) 14.dp else 16.dp)
+            )
+            Spacer(modifier = Modifier.width(if (compact) 6.dp else 8.dp))
+            if (compact) {
+                Text(
+                    s.vpnFilter,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 0.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    s.vpnFilter,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = statusText,
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Switch(
+                checked = isVpnActive,
+                onCheckedChange = { onToggle() },
+                modifier = Modifier.scale(if (compact) 0.62f else 0.7f),
+                colors = SwitchDefaults.colors(checkedTrackColor = GeometricSuccess)
+            )
+        }
+    }
+}
+
+
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppSearchField(
@@ -397,7 +523,11 @@ private fun AppSearchField(
         focusManager.clearFocus(force = true)
     }
 
-    BackHandler(enabled = isFocused) { release() }
+    // Back dari HP: tutup keyboard DAN akhiri mode pencarian (kata kunci dikosongkan).
+    BackHandler(enabled = isFocused || query.isNotEmpty()) {
+        if (query.isNotEmpty()) onQueryChange("")
+        release()
+    }
 
     BasicTextField(
         value = query,
@@ -502,16 +632,9 @@ fun PermissionsDialog(
     onDismiss: () -> Unit
 ) {
     val s = LocalStrings.current
-    var query by remember(packageName) { mutableStateOf("") }
 
-    val filtered = remember(permissions, query) {
-        if (query.isBlank()) permissions
-        else permissions.filter {
-            it.label.contains(query, ignoreCase = true) || it.name.contains(query, ignoreCase = true)
-        }
-    }
-    val runtimePerms = filtered.filter { it.kind == PermissionKind.RUNTIME }
-    val appopsPerms = filtered.filter { it.kind == PermissionKind.APPOPS }
+    val runtimePerms = permissions.filter { it.kind == PermissionKind.RUNTIME }
+    val appopsPerms = permissions.filter { it.kind == PermissionKind.APPOPS }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -566,58 +689,36 @@ fun PermissionsDialog(
                 )
 
                 else -> Column(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
-                        placeholder = {
-                            Text(s.permissionsSearch, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (filtered.isEmpty()) {
-                        Text(
-                            s.permissionsNoMatch,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)
-                        ) {
-                            if (runtimePerms.isNotEmpty()) {
-                                item(key = "h-runtime") {
-                                    PermissionSectionHeader("${s.permissionsRuntime} (${runtimePerms.size})")
-                                }
-                                items(runtimePerms, key = { "R:${it.name}" }) { perm ->
-                                    PermissionRow(
-                                        perm = perm,
-                                        isBusy = busyPermission == perm.name,
-                                        onToggle = { onToggle(perm) }
-                                    )
-                                }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                    ) {
+                        if (runtimePerms.isNotEmpty()) {
+                            item(key = "h-runtime") {
+                                PermissionSectionHeader("${s.permissionsRuntime} (${runtimePerms.size})")
                             }
-                            if (appopsPerms.isNotEmpty()) {
-                                item(key = "h-appops") {
-                                    PermissionSectionHeader("${s.permissionsAppOps} (${appopsPerms.size})")
-                                }
-                                items(appopsPerms, key = { "A:${it.name}" }) { perm ->
-                                    PermissionRow(
-                                        perm = perm,
-                                        isBusy = busyPermission == perm.name,
-                                        onToggle = { onToggle(perm) }
-                                    )
-                                }
+                            items(runtimePerms, key = { "R:${it.name}" }) { perm ->
+                                PermissionRow(
+                                    perm = perm,
+                                    isBusy = busyPermission == perm.name,
+                                    onToggle = { onToggle(perm) }
+                                )
+                            }
+                        }
+                        if (appopsPerms.isNotEmpty()) {
+                            item(key = "h-appops") {
+                                PermissionSectionHeader("${s.permissionsAppOps} (${appopsPerms.size})")
+                            }
+                            items(appopsPerms, key = { "A:${it.name}" }) { perm ->
+                                PermissionRow(
+                                    perm = perm,
+                                    isBusy = busyPermission == perm.name,
+                                    onToggle = { onToggle(perm) }
+                                )
                             }
                         }
                     }
                 }
+
             }
         }
     )

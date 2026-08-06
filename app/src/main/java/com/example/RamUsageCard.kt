@@ -41,13 +41,71 @@ private val UserAppsColor = GeometricDeny
 fun RamUsageCard(
     state: AppManagerState,
     modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    compact: Boolean = false
 ) {
     val s = LocalStrings.current
     val total = state.totalRamGb
     val ratio = if (total > 0f) (state.usedRamGb / total).coerceIn(0f, 1f) else 0f
 
-    val content: @Composable () -> Unit = {
+    val compactContent: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    progress = { ratio },
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                    strokeWidth = 3.dp,
+                    strokeCap = StrokeCap.Round
+                )
+                Text(
+                    "${(ratio * 100).toInt()}%",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    s.memoryShort,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        String.format("%.1f GB", state.usedRamGb),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        String.format("/ %.1f GB", total),
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    String.format("%s %.1f GB", s.ramAvailable, state.ramFreeGb),
+                    fontSize = 8.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+
+    val fullContent: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -148,19 +206,22 @@ fun RamUsageCard(
         }
     }
 
+    val content: @Composable () -> Unit = if (compact) compactContent else fullContent
+    val shape = RoundedCornerShape(if (compact) 18.dp else 24.dp)
+
     if (onClick != null) {
         Card(
             onClick = onClick,
             modifier = modifier,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(24.dp),
+            shape = shape,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) { content() }
     } else {
         Card(
             modifier = modifier,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(24.dp),
+            shape = shape,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) { content() }
     }

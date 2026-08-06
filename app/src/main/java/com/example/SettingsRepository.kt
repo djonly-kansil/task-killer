@@ -18,6 +18,7 @@ object SettingsRepository {
     private const val PREFS = "app_settings"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_LANG = "language"
+    private const val KEY_COMPACT = "compact_cards"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -39,5 +40,13 @@ object SettingsRepository {
 
     fun saveLanguage(context: Context, language: AppLanguage) {
         prefs(context).edit().putString(KEY_LANG, language.name).apply()
+    }
+
+    /** Mode kartu minimalis (VPN + RAM berbagi satu baris). */
+    fun loadCompactCards(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_COMPACT, false)
+
+    fun saveCompactCards(context: Context, compact: Boolean) {
+        prefs(context).edit().putBoolean(KEY_COMPACT, compact).apply()
     }
 }

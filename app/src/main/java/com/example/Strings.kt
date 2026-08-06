@@ -85,7 +85,12 @@ data class Strings(
     val copyAction: String,
     val copiedAction: String,
     val systemInfoAction: String,
-    val activeLabel: String
+    val activeLabel: String,
+    // Mode minimalis & keluar
+    val compactHide: String,
+    val compactShow: String,
+    val ramAvailable: String,
+    val exitConfirm: String
 )
 
 val IndonesianStrings = Strings(
@@ -160,7 +165,11 @@ val IndonesianStrings = Strings(
     copyAction = "Salin",
     copiedAction = "Disalin",
     systemInfoAction = "Info sistem",
-    activeLabel = "AKTIF"
+    activeLabel = "AKTIF",
+    compactHide = "Sembunyikan",
+    compactShow = "Tampilkan",
+    ramAvailable = "Tersedia",
+    exitConfirm = "Tekan kembali sekali lagi untuk keluar"
 )
 
 val EnglishStrings = Strings(
@@ -235,7 +244,11 @@ val EnglishStrings = Strings(
     copyAction = "Copy",
     copiedAction = "Copied",
     systemInfoAction = "System info",
-    activeLabel = "ACTIVE"
+    activeLabel = "ACTIVE",
+    compactHide = "Hide",
+    compactShow = "Show",
+    ramAvailable = "Available",
+    exitConfirm = "Press back again to exit"
 )
 
 fun stringsFor(language: AppLanguage): Strings =
