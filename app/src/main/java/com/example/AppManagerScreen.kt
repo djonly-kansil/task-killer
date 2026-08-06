@@ -53,6 +53,9 @@ import com.example.ui.theme.GeometricDeny
 import com.example.ui.theme.GeometricLocked
 import com.example.ui.theme.GeometricSuccess
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.VisualTransformation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -375,6 +378,7 @@ fun AppManagerScreen(viewModel: AppManagerViewModel, onOpenSettings: () -> Unit 
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppSearchField(
     query: String,
@@ -393,44 +397,60 @@ private fun AppSearchField(
         focusManager.clearFocus(force = true)
     }
 
-    // Tombol/gesture kembali saat kolom fokus: lepas fokus dulu, jangan keluar app.
     BackHandler(enabled = isFocused) { release() }
 
-    TextField(
+    BasicTextField(
         value = query,
         onValueChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 15.dp, vertical = 2.dp)
-            .heightIn(min = 32.dp)
+            .height(36.dp) // <- sekarang beneran dipatuhi, atur di sini
             .focusRequester(focusRequester),
-        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
-        placeholder = { Text(placeholder, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        textStyle = LocalTextStyle.current.copy(
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurface
+        ),
         singleLine = true,
-        shape = RoundedCornerShape(50),
         interactionSource = interactionSource,
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(onSearch = { release() }, onDone = { release() }),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-            disabledContainerColor = MaterialTheme.colorScheme.surface,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent
-        ),
-        leadingIcon = {
-            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-        },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = {
-                    onQueryChange("")
-                    release()
-                }) {
-                    Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(16.dp))
-                }
-            }
+        decorationBox = { innerTextField ->
+            TextFieldDefaults.DecorationBox(
+                value = query,
+                innerTextField = innerTextField,
+                enabled = true,
+                singleLine = true,
+                visualTransformation = VisualTransformation.None,
+                interactionSource = interactionSource,
+                placeholder = {
+                    Text(placeholder, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onQueryChange(""); release() },
+                            modifier = Modifier.size(28.dp) // dikecilin, IconButton default juga minimal 48dp
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = clearLabel, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(50),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp) // ini yg atur "gemuk"-nya isi
+            )
         }
     )
 }
