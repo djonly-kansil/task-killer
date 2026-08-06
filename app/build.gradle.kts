@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.taloarane.appcontroller"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.appmanager.kxmpzq"
+    applicationId = "com.taloarane.appcontroller"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
